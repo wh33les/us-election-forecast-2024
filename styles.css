@@ -1,0 +1,112 @@
+:root {
+    --primary-bg: #354092;
+    --secondary-bg: #23272f;
+    --accent-color: #19181a;
+    --hover-bg: #19181a;
+    --font-family: Optimistic Display, -apple-system, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji
+}
+
+body {
+    background-color: var(--primary-bg);
+}
+
+div {
+    background-color: #b7d1ef;
+    color: #19181a;
+    padding: 2%;
+    width: 800px;
+    margin: auto;
+    font-family: Helvetica;
+    opacity: 0.75;
+}
+
+:link {
+    text-decoration: none;
+    color: #4d5aa0;
+}
+
+/* for unvisited links */
+:visited {
+    text-decoration: none;
+    color: #644451;
+}
+
+/* for visited links */
+a:hover {
+    text-decoration: underline;
+    color: blue;
+}
+
+hr {
+    border-color: var(--accent-color)
+}
+
+td {
+    padding-top: 0px;
+    padding-bottom: 10px;
+    padding-left: 0px;
+    padding-right: 15px;
+}
+
+.ballot {
+    height: 250px;
+    overflow: hidden;
+}
+
+.equation {
+    /* border: solid; */
+    width: 90%;
+    overflow: hidden;
+}
+
+.hidden {
+    /*width: 90%;*/
+    padding: 0;
+    display: none;
+}
+
+body,
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--font-family)
+}
+
+h1,
+h2,
+h3,
+h4 {
+    color: var(--accent-color)
+}
+
+ul {
+    padding-inline-start: 18px
+}
+
+ul li {
+    margin-bottom: 18px;
+    margin-top: -12px
+}
+
+.bigdiv {
+    background-color: var(--secondary-bg);
+    color: var(--accent-color);
+    margin: auto;
+    opacity: 1;
+    overflow: hidden;
+    padding: 18px;
+    width: 800px
+}
+
+.bordered-table {
+    border-collapse: collapse;
+    margin: auto;
+}
+
+.bordered-table td,
+.bordered-table th,
+.bordered-table tr {
+    border: 1px solid black;
+    padding: 8px;
+}

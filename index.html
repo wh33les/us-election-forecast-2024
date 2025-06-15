@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="2024 U.S. Presidential Election Forecast using polling data and double exponential smoothing. Daily predictions by Ashley K. W. Warren.">
+    <meta name="keywords"
+        content="2024 election, election forecast, polling data, presidential election, Trump, Harris, swing states, data science">
+    <meta name="author" content="Ashley K. W. Warren">
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-100299463-1"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'UA-100299463-1'); 
+    </script> <!-- Google tag (gtag.js) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+    <!--Used to recycle code-->
+    <script type="text/javascript" src="../pagesjavascript.js"></script> <!-- Other JavaScript from a file -->
+    <script>
+        function toggleShowHide(elementId) {
+            var element = document.getElementById(elementId);
+            if (element.style.display == "block") {
+                element.style.display = "none";
+            } else {
+                element.style.display = "block";
+            }
+        } /* Toggles hidden text.  Code modified from https://www.toptip.ca/2009/09/showhide-text-on-web-page.html. */
+    </script>
+    <script>
+        $(function () {
+            $('#lastmodified').load('lastmodified.html');
+        }); /* Calls the last modified code */
+    </script>
+    <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+        type="text/javascript"></script> <!-- Render math formulas -->
+
+    <title>2024 U.S. presidential election forecast | Ashley K. W. Warren</title>
+    <link rel="icon" type="image/x-icon" href="flag.ico">
+    <link href="styles.css" rel="stylesheet">
+    <base target="_blank"> <!-- Opens links in a new tab by default -->
+</head>
+
+<body>
+    <div>
+        <h1>2024 U.S. presidential election forecast</h1>
+        <hr / style="color: Black">
+        <div style="text-align: right; width: 95.5%; margin-right: -17px; margin-top: -15px">
+            <a href="https://wh33les.github.io/Projects/projects.html" target="_self">Back to
+                projects |</a>
+        </div>
+    </div>
+    <div>
+        <img src='ballot.jpg' class="ballot" width="100%">
+        <p>This project forecasts, on each day leading up to the 2024 U.S. presidential
+            election, who will win. Predictions are over the two weeks leading up to the election. Predictions are made
+            using <a href="data/president_polls.csv">this polling data
+                from
+                FiveThirtyEight</a>, along with FiveThirtyEights's polling averages for swing states.
+        </p>
+        <p>My algorithm is a Holt exponential smoothing algorithm, and the baseline is random walk with drift.
+        </p>
+        <p>Below you'll find the final forecast (Election Day) compared to the baseline and FiveThirtyEight's
+            predictions. The predictions also include who will win which swing states (listed with their abbreviations).
+            The rest of the page consists of previous days' forecasts, followed by information about my methodology.
+        </p>
+        <p>Finally, you can view the source for my predictions and plots for each day in <a
+                href="https://github.com/wh33les/us-election-forecast-2024">my GitHub repository for this project.</a>
+        </p>
+    </div>
+    <div>
+        <h2>Final forecast (Tue Nov 5 2024)</h2>
+        <p>See below for reflections!</p>
+        <table width="100%">
+            <tr>
+                <td><span style="font-size: 18px"><u>Forecast</u></span></td>
+                <td><span style="font-size: 18px"><u>Baseline</u></span></td>
+                <td><span style="font-size: 18px"><u>FiveThirtyEight</u></span></td>
+            </tr>
+            <tr>
+                <td style="color:Red;">Trump: 268 (47.4%) AZ GA NC NV</td>
+                <td style="color:Red;"><!--<span style="font-size: 18px"><b>-->Trump: 268 (49.8%) AZ GA NC
+                    NV<!--</b></span>--></td>
+                <td style="color:Red;"><span style="font-size: 18px"><b>Trump (50.3% chance)</b></span></td>
+            </tr>
+            <tr>
+                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 270 (48.4%) MI WI PA</b></span></td>
+                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 270 (47.8%) MI WI PA</b></span></td>
+                <td style="color:Blue;"><!--<span style="font-size: 18px"><b>-->Harris (49.5% chance)<!--</b></span>-->
+                </td>
+            </tr>
+        </table>
+        <p>My forecast and the baseline assume both candidates win their "safe" states, or the non-swing states they are
+            currently projected to win. The swing states are Michigan, Wisconsin, Pennsylvania, Arizona, Georgia, North
+            Carolina, and Nevada. The formatting under "Model" and "Baseline" is:</p>
+        <p style="text-align: center" ;>Candidate: # of electoral votes (popular vote) swing states won</p>
+        <p>FiveThirtyEight's forecast shows the candidate's % chance of winning the election. In all three models the
+            projected winner is in bold.</p>
+    </div>
+    <div>
+        <p><span style="font-size: 18px"><u>Model</u></span></p>
+        <img src='outputs/forecast_images/05Nov.png' width="100%">
+        <p>The solid lines indicate the daily polling averages. The prediction is given by the two dots at the very end
+            of the plot. See below for a description of the hyperparameters shown in the lower left-hand corner.</p>
+    </div>
+    <div>
+        <h2><a href="#" onClick="toggleShowHide('reflections'); return false;">Reflections on Election Day</a></h2>
+        <hr>
+        <div id="reflections" class="hidden">
+            <p>Couple of thoughts on Election Day, before the results were known:
+            <ul>
+                <li>If you've been paying attention to my hyperparameters, you'll notice my \(\alpha\)s are always very
+                    low.
+                    If you know anything about
+                    exponential smoothing, then you'll know that this means my predictions were relying more on older
+                    data
+                    than newer. Incidentally, I noticed my predictions seemed to lag behind FiveThirtyEight's by a few
+                    days
+                    and I think this is why.
+                </li>
+                <li>Everyone is saying this election is a toss-up, including FiveThirtyEight. Even though they gave
+                    Trump a
+                    higher
+                    likelihood of winning in today's forecast, they are predicting Harris will win with 270 electoral
+                    votes.
+                    As mentioned below, I've noticed all the swing state polling has been well within the margin of
+                    error,
+                    so even though my predictions about the swing states have always been based on who's leading in the
+                    polls, they
+                    probably aren't very helpful. For one thing, I think it's far more likely that Harris will win the
+                    popular vote and Trump will win the electoral college, but for the past few days my algorithm has
+                    been
+                    predicting the other way around.</li>
+            </ul>
+            Thanks for visiting this site and keeping up with it. I may return with a few more thoughts once the outcome
+            of
+            the election is known. Happy Election Day!
+            </p>
+        </div>
+    </div>
+    <div>
+        <h2><a href="#" onClick="toggleShowHide('previous'); return false;">Previous forecasts</a></h2>
+        <hr>
+        <div id="previous" class="hidden">
+            <img src='outputs/final_historical.png' width="100%">
+            <p>My prediction gives the percentage of the popular vote each candidate is going to win. FiveThirtyEight,
+                on
+                the other hand, calculated a likelihood of each candidate winning. Below, red indicates Trump is the
+                predicted winner and blue indicates Harris is the predicted winner. The percentages give the likelihood
+                that candidate will win.</p>
+            <table class="bordered-table">
+                <tr>
+                    <th>10/23</th>
+                    <th>10/24</th>
+                    <th>10/25</th>
+                    <th>10/26</th>
+                    <th>10/27</th>
+                    <th>10/28</th>
+                    <th>10/29</th>
+                </tr>
+                <tr>
+                    <td style="color:Blue;">50.7%</td>
+                    <td style="color:Blue;">52.0%</td>
+                    <td style="color:Blue;">52.8%</td>
+                    <td style="color:Blue;">53.0%</td>
+                    <td style="color:Blue;">54.5%</td>
+                    <td style="color:Blue;">53.8%</td>
+                    <td style="color:Blue;">53.6%</td>
+                </tr>
+                <tr>
+                    <th>10/30</th>
+                    <th>10/31</th>
+                    <th>11/1</th>
+                    <th>11/2</th>
+                    <th>11/3</th>
+                    <th>11/4</th>
+                    <th>11/5</th>
+                </tr>
+                <tr>
+                    <td style="color:Blue;">51.6%</td>
+                    <td style="color:Blue;">51.3%</td>
+                    <td style="color:Blue;">52.0%</td>
+                    <td style="color:Blue;">50.4%</td>
+                    <td style="color:Blue;">53.3%</td>
+                    <td style="color:Blue;">53.0%</td>
+                    <td style="color:Blue;">50.3%</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div>
+        <h2><a href="#" onClick="toggleShowHide('swing'); return false;">Swing state predictions</a></h2>
+        <hr>
+        <div id="swing" class="hidden">
+            <p>As mentioned above, my method assumed each candidate would win their "safe" states, or the non-swing
+                states they were favored to win on that day. Information about likelihood of winning swing states was
+                gathered from FiveThirtyEight; unfortunately that data is no longer available.</p>
+            <p>To predict who would win which swing states I calculated each candidate's predicted percentage of the
+                popular vote,
+                only among those two candidates. Then I allocated that percentage of electoral votes to each candidate.
+                I awarded states starting with the states the candidate was leading in by the most, according to
+                FiveThirtyEight.
+                After allocating, once there were not enough votes for the next state, I gave that state to the
+                candidate if their remaining votes were at least half of that state's electoral votes.</p>
+            <p>Although this was a very simple algorithm, the results were not likely to differ too much from the actual
+                outcome. The average sample size of the polls taken was 1600, giving an estimated margin of error of
+                2.5%. All of the leads in the swing states were well within this margin of error.</p>
+        </div>
+    </div>
+    <div>
+        <h2><a href="#" onClick="toggleShowHide('averages'); return false;">Computing daily polling averages</a></h2>
+        <hr>
+        <div id="averages" class="hidden">
+            <p>In computing the daily averages I did not use all of the data available. To begin with, I only used polls
+                from after Joe Biden dropped out of the race and only results for Donald Trump and Kamala Harris. There
+                were a few other restrictions I made in which polls got factored into my daily averages:</p>
+            <p>I only used the polls among likely voters. "Likely" is subjective, and depends on the poll. Either way,
+                it made no sense to use polls from all registered or
+                all adults, since the outcome was only going to be determined by those who actually voted.
+            </p>
+            <p>To keep my popular vote predictions consistent with my swing state predictions, I only
+                used national and swing state polls. I left out all polls from non-swing states.</p>
+            <p>Finally, FiveThirtyEight rates all the polls with a "POLLSCORE". <a
+                    href="https://abcnews.go.com/538/538s-pollster-ratings-work/story?id=105398138">You can read about
+                    their methodology for determining this metric here.</a> To summarize, negative POLLSCORES are
+                considered reliable polls, so I only factored in polls whose POLLSCORE was negative.</p>
+        </div>
+    </div>
+    <div><a href="#" onClick="toggleShowHide('algorithm'); return false;">
+            <h2>Hyperparameters and the prediction algorithm
+        </a></h2>
+        <hr>
+        <div id="algorithm" class="hidden">
+            <p>For a time series with a trend (both candidates seemed to be trending up getting closer to Election Day),
+                double (Holt) exponential smoothing appeared to be the most natural choice for forecasting. Recall, the
+                double
+                exponential smoothing model predicts at time \(t\)
+            <div class="equation">
+                \[
+                \hat{y}_t = \begin{cases} s_{t-1} + b_{t-1} & \text{ for } 1 < t\leq n \\ s_n + (t-n)b_{n} & \text{ for
+                    } t> n
+                    \end{cases}
+                    \]
+            </div>
+            where \(s_t\) and \(b_t\) are level and slope terms, respectively, given by
+            <div class="equation">
+                \begin{align}
+                s_{t} &= \alpha y_t + (1-\alpha) (s_{t-1} + b_{t-1}), \ s_1 = y_1 \\
+                b_{t} &= \beta (s_t - s_{t-1}) + (1-\beta) b_{t-1}, \ b_1 = y_2 - y_1
+                \end{align}
+            </div>
+            where \(\alpha\) and \(\beta\) are hyperparameters between \(0\) and \(1\).</p>
+            <p>Originally I didn't think exponential smoothing would be an appropriate election forecast method, since
+                my intuition said new polls shouldn't really rely on polls that far in the past, and exponential
+                smoothing uses all previous observations to make predictions. On the other hand, I wanted the slope term
+                used in double exponential smoothing that takes trends into account. So I wanted to use a combination of
+                a weighted rolling average for the past 7 days, with the double exponential smoothing slope term.</p>
+            <p>Then, when trying to figure out how to modify the model, I realized that the weights already decrease
+                exponentially. If I make my hyperparameters, \( \alpha\) and \( \beta\) for each candidate, large
+                enough, then I can make sure the model only takes the past week or so's observations into account, while
+                the rest give negligible contributions. This seemed much simpler.</p>
+            <p>I ran a grid search to tune my hyperparameters, optimizing the mean absolute error of the forecast on the
+                test set relative to the mean absolute error of the na&iuml;ve forecast on the training set over an
+                equivalent horizon. I used all my polling data as training data, with five cross-validation splits and
+                holdout sets of 7 days each. I did it this way because I thought all the data would be useful in
+                building the model, it didn't make sense to leave out the last few days as test data. Surprisingly,
+                after running the grid search the hyperparameters all turned out to be small, meaning the better
+                forecasts come from taking all previous data into account!</p>
+        </div>
+    </div>
+    <div id="lastmodified"></div>
+</body>
+
+</html>

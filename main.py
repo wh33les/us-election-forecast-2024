@@ -1,5 +1,4 @@
 # src/main.py
-#!/usr/bin/env python3
 """
 Rolling election forecast pipeline - matches original methodology.
 For each day Oct 23 - Nov 5, uses only data available up to that day.
@@ -11,12 +10,12 @@ import numpy as np
 from datetime import datetime, timedelta, date
 from pathlib import Path
 
-from config import ModelConfig, DataConfig
-from data.collectors import PollingDataCollector
-from data.processors import PollingDataProcessor
-from models.holt_forecaster import HoltElectionForecaster
-from models.electoral_calculator import ElectoralCollegeCalculator
-from visualization.plotting import ElectionPlotter
+from src.config import ModelConfig, DataConfig
+from src.data.collectors import PollingDataCollector
+from src.data.processors import PollingDataProcessor
+from src.models.holt_forecaster import HoltElectionForecaster
+from src.models.electoral_calculator import ElectoralCollegeCalculator
+from src.visualization.plotting import ElectionPlotter
 
 # Setup logging
 logging.basicConfig(

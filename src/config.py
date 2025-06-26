@@ -100,31 +100,3 @@ class DataConfig:
     def forecast_start_date_parsed(self):
         """Return forecast start date as datetime.date object."""
         return datetime.strptime(self.forecast_start_date, "%Y-%m-%d").date()
-
-
-@dataclass
-class PlottingConfig:
-    """Configuration for plotting and visualization."""
-
-    # Figure settings
-    figure_size: tuple = (12, 6)
-    dpi: int = 150
-    style: str = "whitegrid"
-
-    # Color scheme
-    trump_color: str = "r"
-    harris_color: str = "b"
-    trump_prediction_style: str = "r--."
-    harris_prediction_style: str = "b--."
-    trump_baseline_style: str = "r:"
-    harris_baseline_style: str = "b:"
-
-    # Axis limits and formatting
-    y_min: float = 40
-    y_max: float = 55
-    font_size_labels: int = 12
-    font_size_title: int = 16
-
-    # Historical plot settings
-    historical_y_min: float = 46
-    historical_y_max: float = 52

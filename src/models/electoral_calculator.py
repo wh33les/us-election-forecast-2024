@@ -4,7 +4,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -197,28 +197,3 @@ class ElectoralCollegeCalculator:
 
         logger.info("Electoral college calculations completed")
         return results
-
-    def format_outcome_summary(self, results: Dict[str, Dict]) -> str:
-        """
-        Format electoral college results for logging/display.
-        """
-        model = results["model"]
-        baseline = results["baseline"]
-
-        summary = f"""
-=== ELECTORAL COLLEGE SUMMARY ===
-MODEL PREDICTION:
-  Winner: {model['winner']}
-  Trump: {model['trump_electoral_votes']} electoral votes ({model['trump_vote_pct']:.1f}% popular vote)
-  Harris: {model['harris_electoral_votes']} electoral votes ({model['harris_vote_pct']:.1f}% popular vote)
-  Trump states: {', '.join(model['trump_states'])}
-  Harris states: {', '.join(model['harris_states'])}
-
-BASELINE PREDICTION:
-  Winner: {baseline['winner']}
-  Trump: {baseline['trump_electoral_votes']} electoral votes ({baseline['trump_vote_pct']:.1f}% popular vote)
-  Harris: {baseline['harris_electoral_votes']} electoral votes ({baseline['harris_vote_pct']:.1f}% popular vote)
-  Trump states: {', '.join(baseline['trump_states'])}
-  Harris states: {', '.join(baseline['harris_states'])}
-"""
-        return summary

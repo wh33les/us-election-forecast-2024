@@ -87,33 +87,6 @@ class PollingDataProcessor:
         )
         return df_cleaned
 
-    def merge_with_historical_data(
-        self, new_data: pd.DataFrame, old_data: pd.DataFrame = None
-    ) -> pd.DataFrame:
-        """
-        Merge new data with historical data if available.
-        From your original forecast.py merge logic.
-        """
-        if old_data is None:
-            logger.info("No historical data to merge")
-            return new_data
-
-        logger.info("Merging new data with historical data...")
-
-        # Merge old and new data
-        df_merged = pd.concat([old_data, new_data], join="outer", ignore_index=True)
-
-        # Sort again after merge
-        df_merged.sort_values(
-            ["candidate_name", "end_date"],
-            ascending=[True, True],
-            inplace=True,
-            ignore_index=True,
-        )
-
-        logger.info(f"Merged data contains {len(df_merged)} total records")
-        return df_merged
-
     def split_by_candidate(
         self, df_cleaned: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -129,45 +102,3 @@ class PollingDataProcessor:
             f"Split data: {len(trump)} Trump records, {len(harris)} Harris records"
         )
         return trump, harris
-
-    def filter_data_by_date(self, df: pd.DataFrame, cutoff_date) -> pd.DataFrame:
-        """
-        Filter data to only include records up to a specific date.
-        Used for preventing future data leakage in rolling forecasts.
-        """
-        filtered = df[df["end_date"] <= cutoff_date].copy()
-        logger.info(f"Filtered data to {cutoff_date}: {len(filtered)} records")
-        return filtered
-
-    def validate_data_quality(
-        self, trump_data: pd.DataFrame, harris_data: pd.DataFrame
-    ) -> bool:
-        """
-        Validate that we have sufficient data for modeling.
-        """
-        min_records = 10  # Minimum records needed for reliable modeling
-
-        if len(trump_data) < min_records:
-            logger.warning(
-                f"Insufficient Trump data: {len(trump_data)} < {min_records}"
-            )
-            return False
-
-        if len(harris_data) < min_records:
-            logger.warning(
-                f"Insufficient Harris data: {len(harris_data)} < {min_records}"
-            )
-            return False
-
-        # Check for missing values in daily_average
-        trump_missing = trump_data["daily_average"].isna().sum()
-        harris_missing = harris_data["daily_average"].isna().sum()
-
-        if trump_missing > 0:
-            logger.warning(f"Trump data has {trump_missing} missing daily averages")
-
-        if harris_missing > 0:
-            logger.warning(f"Harris data has {harris_missing} missing daily averages")
-
-        logger.info("Data quality validation passed")
-        return True

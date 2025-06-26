@@ -4,7 +4,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, Tuple
+from typing import Dict
 from statsmodels.tsa.holtwinters import Holt
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -247,15 +247,4 @@ class HoltElectionForecaster:
         return {
             "trump": self.fitted_models["trump"].fittedvalues,
             "harris": self.fitted_models["harris"].fittedvalues,
-        }
-
-    def get_election_day_predictions(self, horizon: int) -> Dict[str, float]:
-        """
-        Get election day predictions (final forecast values).
-        """
-        forecasts = self.forecast(horizon)
-
-        return {
-            "trump": round(forecasts["trump"][-1], 1),
-            "harris": round(forecasts["harris"][-1], 1),
         }

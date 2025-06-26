@@ -19,7 +19,7 @@ class ModelConfig:
     # Grid search parameters for Holt smoothing
     grid_min: float = 0.0
     grid_max: float = 0.5
-    grid_step: float = 0.01
+    grid_step: float = 0.1
 
     # Electoral college settings
     swing_state_electoral_votes: int = 93

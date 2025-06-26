@@ -331,7 +331,9 @@ def main():
         logger.info(
             "Models: Holt exponential smoothing with hyperparameter optimization"
         )
-        logger.info("Outputs: Daily forecast images + historical performance plots")
+        logger.info(
+            "Outputs: Daily forecast images + daily historical performance plots"
+        )
         logger.info("=" * 60)
     elif not args.debug:
         print("Running rolling election forecasts...")
@@ -389,7 +391,7 @@ def main():
 
     # Create output directories
     Path(data_config.forecast_images_dir).mkdir(parents=True, exist_ok=True)
-    Path("outputs").mkdir(parents=True, exist_ok=True)  # For final historical plot
+    Path("outputs").mkdir(parents=True, exist_ok=True)  # For daily historical plots
     Path("data").mkdir(parents=True, exist_ok=True)
 
     # Load and process ALL raw data once
@@ -651,30 +653,26 @@ def main():
                 save_path=forecast_plot_path,
             )
 
-            # 2. Historical forecasts plot (only generate on final day - election day)
-            if forecast_date == election_day:
-                if args.verbose:
-                    logger.info(
-                        "   📊 Creating final historical performance visualization..."
-                    )
-                else:
-                    logger.info(
-                        "Creating final historical performance visualization..."
-                    )
-
-                historical_plot_path = Path("outputs") / "final_historical.png"
-                plotter.plot_historical_forecasts(
-                    previous_forecasts, save_path=historical_plot_path
-                )
+            # 2. Historical forecasts plot (generate for each day)
+            if args.verbose:
+                logger.info("   📊 Creating historical performance visualization...")
             else:
-                if args.debug:
-                    logger.debug(
-                        "Skipping historical plot - only generated on election day"
-                    )
-                elif not args.verbose:
-                    logger.info(
-                        "Skipping historical plot - only generated on election day"
-                    )
+                logger.info("Creating historical performance visualization...")
+
+            # Filter previous_forecasts to only show data up to current forecast_date
+            historical_data = previous_forecasts[
+                previous_forecasts["date"] <= forecast_date
+            ].copy()
+
+            historical_plot_path = (
+                Path("outputs/previous_forecasts")
+                / f"historical_{forecast_date.strftime('%m%d')}.png"
+            )
+            plotter.plot_historical_forecasts(
+                historical_data,
+                forecast_date=forecast_date,
+                save_path=historical_plot_path,
+            )
 
             # Log results based on verbosity
             if args.verbose:
@@ -685,7 +683,8 @@ def main():
                 logger.info(
                     f"   🏆 Electoral outcome: {electoral_results['model']['winner']} wins"
                 )
-                logger.info(f"   💾 Chart saved: {forecast_plot_path.name}")
+                logger.info(f"   💾 Forecast chart: {forecast_plot_path.name}")
+                logger.info(f"   💾 Historical chart: {historical_plot_path.name}")
             else:
                 logger.info(f"✅ Completed forecast for {forecast_date}")
                 logger.info(
@@ -708,7 +707,9 @@ def main():
         logger.info("=" * 50)
         logger.info("📁 Generated outputs:")
         logger.info(f"   • Daily forecast images: {data_config.forecast_images_dir}/")
-        logger.info(f"   • Historical summary: outputs/final_historical.png")
+        logger.info(
+            f"   • Daily historical plots: outputs/historical_forecasts/historical_YYYYMMDD.png"
+        )
         logger.info(f"   • Processed data: data/")
         logger.info("=" * 50)
     else:
@@ -717,7 +718,7 @@ def main():
             "\n🎉 Rolling Election Forecast 2024 pipeline completed successfully!"
         )
         logger.info(f"Forecast images saved to: {data_config.forecast_images_dir}")
-        logger.info("Final historical image saved to: outputs/final_historical.png")
+        logger.info("Daily historical plots saved to: outputs/historical_YYYYMMDD.png")
         logger.info("Cleaned data saved to: data/df_cleaned.csv")
         logger.info("Historical forecasts saved to: data/previous.csv")
 

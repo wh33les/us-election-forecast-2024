@@ -142,74 +142,131 @@ class ElectionPlotter:
             plt.savefig(save_path, bbox_inches="tight", dpi=150)
             logger.info(f"Saved main forecast plot to {save_path}")
 
+        plt.close()
+
     def plot_historical_forecasts(
         self,
         previous_forecasts: pd.DataFrame,
+        forecast_date=None,
         save_path: Optional[Path] = None,
     ):
         """
         Create historical forecasts plot showing how predictions changed over time.
-        From your swing_states.py plotting logic (without 538 data).
         """
         logger.info("Creating historical forecasts plot...")
 
-        # Create the full expected date range (Oct 23 - Nov 5)
-        full_date_range = pd.Series(
-            pd.date_range(start=datetime(2024, 10, 23), end=datetime(2024, 11, 5))
-        ).dt.date
-
-        # Separate by candidate and merge with full date range
+        # Separate by candidate - only get data that actually exists (not NaN)
         trump_data = previous_forecasts[
-            previous_forecasts["candidate"] == "Donald Trump"
+            (previous_forecasts["candidate"] == "Donald Trump")
+            & (previous_forecasts["model"].notna())
         ].copy()
         harris_data = previous_forecasts[
-            previous_forecasts["candidate"] == "Kamala Harris"
+            (previous_forecasts["candidate"] == "Kamala Harris")
+            & (previous_forecasts["model"].notna())
         ].copy()
 
-        # Create full dataframes with the complete date range
-        trump_full = pd.DataFrame({"date": full_date_range})
-        harris_full = pd.DataFrame({"date": full_date_range})
-
-        # Merge with actual data (this will include NaN for missing dates)
-        trump_full = trump_full.merge(trump_data, on="date", how="left")
-        harris_full = harris_full.merge(harris_data, on="date", how="left")
-
-        # Extract data for plotting (full range)
-        dates = full_date_range
-        y_trump_mod = trump_full["model"].values
-        y_trump_baseline = trump_full["baseline"].values
-        y_harris_mod = harris_full["model"].values
-        y_harris_baseline = harris_full["baseline"].values
+        # If no data available, create a minimal plot with a message
+        if len(trump_data) == 0 and len(harris_data) == 0:
+            plt.figure(figsize=(12, 6))
+            plt.text(
+                0.5,
+                0.5,
+                "No historical data available yet",
+                horizontalalignment="center",
+                verticalalignment="center",
+                transform=plt.gca().transAxes,
+                fontsize=16,
+            )
+            plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
+            plt.ylim(45, 52)
+            plt.xlabel("Date", fontsize=12)
+            plt.ylabel("Percentage of popular vote", fontsize=12)
+            if forecast_date:
+                plt.title(
+                    f"Predictions up to {forecast_date.strftime('%a %b %d %Y')}",
+                    fontsize=16,
+                )
+            else:
+                plt.title("Election Forecast Evolution", fontsize=16)
+            if save_path:
+                plt.savefig(save_path, bbox_inches="tight", dpi=150)
+                logger.info(f"Saved empty historical forecasts plot to {save_path}")
+            plt.close()
+            return
 
         # Create figure
         plt.figure(figsize=(12, 6))
 
-        # Plot model predictions (will automatically handle NaN gaps)
-        plt.plot(dates, y_trump_mod, "r", label="Trump (model prediction)")
-        plt.plot(dates, y_harris_mod, "b", label="Harris (model prediction)")
+        # Convert dates to datetime objects to ensure proper plotting
+        if len(trump_data) > 0:
+            trump_data_sorted = trump_data.sort_values("date").copy()
+            # Ensure dates are datetime objects for matplotlib
+            trump_data_sorted["plot_date"] = pd.to_datetime(trump_data_sorted["date"])
 
-        # Plot baseline predictions (only where not NaN)
-        trump_baseline_mask = ~pd.isna(y_trump_baseline)
-        harris_baseline_mask = ~pd.isna(y_harris_baseline)
-
-        if np.any(trump_baseline_mask):
             plt.plot(
-                dates[trump_baseline_mask],
-                y_trump_baseline[trump_baseline_mask],
+                trump_data_sorted["plot_date"],
+                trump_data_sorted["model"],
+                "r-",
+                label="Trump (model prediction)",
+                marker="o",
+                markersize=4,
+                linewidth=2,
+            )
+
+        if len(harris_data) > 0:
+            harris_data_sorted = harris_data.sort_values("date").copy()
+            # Ensure dates are datetime objects for matplotlib
+            harris_data_sorted["plot_date"] = pd.to_datetime(harris_data_sorted["date"])
+
+            plt.plot(
+                harris_data_sorted["plot_date"],
+                harris_data_sorted["model"],
+                "b-",
+                label="Harris (model prediction)",
+                marker="o",
+                markersize=4,
+                linewidth=2,
+            )
+
+        # Plot baseline predictions - only where not NaN
+        trump_baseline_data = trump_data[trump_data["baseline"].notna()]
+        harris_baseline_data = harris_data[harris_data["baseline"].notna()]
+
+        if len(trump_baseline_data) > 0:
+            trump_baseline_sorted = trump_baseline_data.sort_values("date").copy()
+            trump_baseline_sorted["plot_date"] = pd.to_datetime(
+                trump_baseline_sorted["date"]
+            )
+            plt.plot(
+                trump_baseline_sorted["plot_date"],
+                trump_baseline_sorted["baseline"],
                 "r--",
                 label="Trump (baseline)",
+                marker="s",
+                markersize=3,
+                linewidth=2,
             )
-        if np.any(harris_baseline_mask):
+
+        if len(harris_baseline_data) > 0:
+            harris_baseline_sorted = harris_baseline_data.sort_values("date").copy()
+            harris_baseline_sorted["plot_date"] = pd.to_datetime(
+                harris_baseline_sorted["date"]
+            )
             plt.plot(
-                dates[harris_baseline_mask],
-                y_harris_baseline[harris_baseline_mask],
+                harris_baseline_sorted["plot_date"],
+                harris_baseline_sorted["baseline"],
                 "b--",
                 label="Harris (baseline)",
+                marker="s",
+                markersize=3,
+                linewidth=2,
             )
 
         # Formatting
         plt.xlabel("Date", fontsize=12)
         plt.ylabel("Percentage of popular vote", fontsize=12)
+
+        # Set x-axis limits - no padding
         plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
         plt.ylim(45, 52)
 
@@ -217,78 +274,35 @@ class ElectionPlotter:
         plt.xticks(
             [
                 datetime(2024, 10, 23),
-                datetime(2024, 10, 24),
-                datetime(2024, 10, 26),
-                datetime(2024, 10, 28),
-                datetime(2024, 10, 30),
-                datetime(2024, 11, 1),
-                datetime(2024, 11, 3),
+                datetime(2024, 10, 25),
+                datetime(2024, 10, 27),
+                datetime(2024, 10, 29),
+                datetime(2024, 10, 31),
+                datetime(2024, 11, 2),
+                datetime(2024, 11, 4),
                 datetime(2024, 11, 5),
             ]
         )
 
-        # Title - use the latest date that has actual data
-        available_trump_data = trump_data[trump_data["model"].notna()]
-        if len(available_trump_data) > 0:
-            latest_date = available_trump_data["date"].max()
+        # Title
+        if forecast_date:
+            title_date = forecast_date
         else:
-            latest_date = datetime(2024, 10, 22).date()
+            if len(trump_data) > 0:
+                title_date = trump_data["date"].max()
+            elif len(harris_data) > 0:
+                title_date = harris_data["date"].max()
+            else:
+                title_date = datetime(2024, 10, 22).date()
 
         plt.title(
-            f"Predictions up to {latest_date.strftime('%a %b %d %Y')}",
-            fontsize=16,
+            f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
         )
-
         plt.legend()
-
-        # Clean historical plot without annotations
 
         # Save plot
         if save_path:
             plt.savefig(save_path, bbox_inches="tight", dpi=150)
             logger.info(f"Saved historical forecasts plot to {save_path}")
 
-    def create_summary_plot(
-        self,
-        final_results: Dict[str, Dict],
-        save_path: Optional[Path] = None,
-    ):
-        """
-        Create a summary plot showing final electoral college predictions.
-        """
-        logger.info("Creating summary plot...")
-
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-        # Model predictions
-        model = final_results["model"]
-        ax1.bar(
-            ["Trump", "Harris"],
-            [model["trump_electoral_votes"], model["harris_electoral_votes"]],
-            color=["red", "blue"],
-            alpha=0.7,
-        )
-        ax1.axhline(y=270, color="black", linestyle="--", alpha=0.5, label="270 to win")
-        ax1.set_title("Model Prediction", fontsize=14)
-        ax1.set_ylabel("Electoral Votes", fontsize=12)
-        ax1.legend()
-
-        # Baseline predictions
-        baseline = final_results["baseline"]
-        ax2.bar(
-            ["Trump", "Harris"],
-            [baseline["trump_electoral_votes"], baseline["harris_electoral_votes"]],
-            color=["red", "blue"],
-            alpha=0.7,
-        )
-        ax2.axhline(y=270, color="black", linestyle="--", alpha=0.5, label="270 to win")
-        ax2.set_title("Baseline Prediction", fontsize=14)
-        ax2.set_ylabel("Electoral Votes", fontsize=12)
-        ax2.legend()
-
-        plt.suptitle("Electoral College Predictions", fontsize=16)
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path, bbox_inches="tight", dpi=150)
-            logger.info(f"Saved summary plot to {save_path}")
+        plt.close()

@@ -137,12 +137,32 @@ class ElectionPlotter:
             xytext=(datetime(2024, 7, 23), 40.5),
         )
 
-        # Save plot
+        # Save plot with proper overwrite handling
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight", dpi=150)
-            logger.info(f"Saved main forecast plot to {save_path}")
+            try:
+                # Force remove existing file if it exists
+                if save_path.exists():
+                    save_path.unlink()
+                    logger.debug(f"Removed existing file: {save_path}")
 
-        plt.close()
+                # Save with explicit parameters for clean output
+                plt.savefig(
+                    save_path,
+                    bbox_inches="tight",
+                    dpi=150,
+                    facecolor="white",
+                    edgecolor="none",
+                )
+                logger.info(f"Saved main forecast plot to {save_path}")
+
+            except Exception as e:
+                logger.error(f"Error saving main forecast plot: {e}")
+            finally:
+                # Always close the figure to free memory
+                plt.close()
+        else:
+            # Close figure even if not saving
+            plt.close()
 
     def plot_historical_forecasts(
         self,
@@ -188,10 +208,30 @@ class ElectionPlotter:
                 )
             else:
                 plt.title("Election Forecast Evolution", fontsize=16)
+
+            # Save empty plot with proper overwrite handling
             if save_path:
-                plt.savefig(save_path, bbox_inches="tight", dpi=150)
-                logger.info(f"Saved empty historical forecasts plot to {save_path}")
-            plt.close()
+                try:
+                    # Force remove existing file if it exists
+                    if save_path.exists():
+                        save_path.unlink()
+                        logger.debug(f"Removed existing file: {save_path}")
+
+                    plt.savefig(
+                        save_path,
+                        bbox_inches="tight",
+                        dpi=150,
+                        facecolor="white",
+                        edgecolor="none",
+                    )
+                    logger.info(f"Saved empty historical forecasts plot to {save_path}")
+
+                except Exception as e:
+                    logger.error(f"Error saving empty historical plot: {e}")
+                finally:
+                    plt.close()
+            else:
+                plt.close()
             return
 
         # Create figure
@@ -300,9 +340,29 @@ class ElectionPlotter:
         )
         plt.legend()
 
-        # Save plot
+        # Save plot with proper overwrite handling
         if save_path:
-            plt.savefig(save_path, bbox_inches="tight", dpi=150)
-            logger.info(f"Saved historical forecasts plot to {save_path}")
+            try:
+                # Force remove existing file if it exists
+                if save_path.exists():
+                    save_path.unlink()
+                    logger.debug(f"Removed existing file: {save_path}")
 
-        plt.close()
+                # Save with explicit parameters for clean output
+                plt.savefig(
+                    save_path,
+                    bbox_inches="tight",
+                    dpi=150,
+                    facecolor="white",
+                    edgecolor="none",
+                )
+                logger.info(f"Saved historical forecasts plot to {save_path}")
+
+            except Exception as e:
+                logger.error(f"Error saving historical forecasts plot: {e}")
+            finally:
+                # Always close the figure to free memory
+                plt.close()
+        else:
+            # Close figure even if not saving
+            plt.close()

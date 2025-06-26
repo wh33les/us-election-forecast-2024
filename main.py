@@ -198,8 +198,13 @@ def load_or_create_comprehensive_dataset():
         df = pd.read_csv(dataset_path)
         df["date"] = pd.to_datetime(df["date"]).dt.date
         df["forecast_run_date"] = pd.to_datetime(df["forecast_run_date"]).dt.date
-        logger.info(f"Loaded {len(df)} existing records")
-        logger.debug(f"Comprehensive dataset columns: {df.columns.tolist()}")
+
+        # Show existing forecast runs
+        existing_runs = df["forecast_run_date"].unique()
+        logger.info(
+            f"Loaded {len(df)} existing records from {len(existing_runs)} forecast runs"
+        )
+        logger.debug(f"Existing forecast runs: {sorted(existing_runs)}")
         logger.debug(f"Date range: {df['date'].min()} to {df['date'].max()}")
         return df
     else:
@@ -208,7 +213,7 @@ def load_or_create_comprehensive_dataset():
 
 
 def create_comprehensive_forecast_record(
-    available_data,
+    training_data,  # Changed from available_data to be more accurate
     all_dates,
     days_till_then,
     fitted_values,
@@ -220,20 +225,20 @@ def create_comprehensive_forecast_record(
 ):
     """
     Create comprehensive forecast record combining all data.
-    Replaces the old save_forecasts_to_dataframe function.
+    Now uses only training data (excludes validation holdout period).
     """
     logger = logging.getLogger(__name__)
     logger.debug(
         f"Creating comprehensive record for {forecast_date}: "
-        f"available_data shape={available_data.shape}, "
+        f"training_data shape={training_data.shape}, "
         f"forecast periods={len(days_till_then)}"
     )
 
     comprehensive_records = []
     election_day = date(2024, 11, 5)
 
-    # Add historical polling data
-    for _, row in available_data.iterrows():
+    # Add historical polling data (from training set only)
+    for _, row in training_data.iterrows():
         record = {
             "date": row["end_date"],
             "candidate": row["candidate_name"],
@@ -259,9 +264,9 @@ def create_comprehensive_forecast_record(
         }
         comprehensive_records.append(record)
 
-    # Add model fitted values for historical dates
+    # Add model fitted values for historical dates (training period only)
     historical_dates = (
-        available_data["end_date"].drop_duplicates().sort_values().tolist()
+        training_data["end_date"].drop_duplicates().sort_values().tolist()
     )
 
     for i, hist_date in enumerate(historical_dates):
@@ -683,46 +688,97 @@ def main():
                 logger.warning(f"Insufficient data for {forecast_date}, skipping")
             continue
 
+        # Proper time series train/holdout split
+        # Train-train: up to 7 days before forecast date
+        # Holdout: last 7 days before forecast date
+        test_size = model_config.test_size  # Should be 7 from config
+
+        # Calculate train-train cutoff date (7 days before forecast date)
+        train_cutoff_date = forecast_date - timedelta(days=test_size)
+
+        if args.debug:
+            logger.debug(f"Forecast date: {forecast_date}")
+            logger.debug(f"Train-train cutoff: {train_cutoff_date}")
+            logger.debug(
+                f"Available data range: {available_data['end_date'].min()} to {available_data['end_date'].max()}"
+            )
+
+        # Split data based on the cutoff date
+        trump_train = trump_data[trump_data["end_date"] < train_cutoff_date].copy()
+        harris_train = harris_data[harris_data["end_date"] < train_cutoff_date].copy()
+        trump_holdout = trump_data[trump_data["end_date"] >= train_cutoff_date].copy()
+        harris_holdout = harris_data[
+            harris_data["end_date"] >= train_cutoff_date
+        ].copy()
+
+        if len(trump_train) < 10 or len(harris_train) < 10:
+            if args.verbose:
+                logger.warning(
+                    f"   ⚠️  Insufficient train-train data (Trump: {len(trump_train)}, Harris: {len(harris_train)})"
+                )
+            else:
+                logger.warning(f"Insufficient train-train data, skipping")
+            continue
+
+        if args.verbose:
+            logger.info(f"   📊 Proper time series split:")
+            logger.info(
+                f"      → Train-train: {len(trump_train)} days ({trump_train['end_date'].min()} to {trump_train['end_date'].max()})"
+            )
+            logger.info(
+                f"      → Holdout: {len(trump_holdout)} days ({trump_holdout['end_date'].min()} to {trump_holdout['end_date'].max()})"
+            )
+            logger.info(f"      → Forecast from: {forecast_date}")
+            logger.info(f"      → ✅ No data leakage: 7-day gap before forecast")
+        elif args.debug:
+            logger.debug(
+                f"Train-train: {len(trump_train)} days, Holdout: {len(trump_holdout)} days"
+            )
+
         # Calculate days until election from this forecast date
         days_to_election = (election_day - forecast_date).days
 
         if args.verbose:
             logger.info(f"   → Forecasting {days_to_election} days until Election Day")
             logger.info(
-                f"   → Data points: Trump={len(trump_data)}, Harris={len(harris_data)}"
+                f"   → Training data points: Trump={len(trump_train)}, Harris={len(harris_train)}"
             )
         else:
             logger.info(f"Forecasting {days_to_election} days until election")
 
         try:
-            # Train models using only available data
+            # Train models using only TRAINING data (not validation data)
             if args.verbose:
                 logger.info("   🤖 Training Holt exponential smoothing models...")
 
             forecaster = HoltElectionForecaster(model_config)
 
-            # For cross-validation, we need to create a dummy x_train (not used anyway)
-            x_train = pd.Series(range(len(trump_data)))
+            # For cross-validation, we need to create x_train based on training data only
+            x_train = pd.Series(range(len(trump_train)))
 
-            # Grid search and model fitting
+            # Grid search and model fitting using ONLY training data
             if args.verbose:
-                logger.info("   🔍 Running hyperparameter optimization...")
+                logger.info(
+                    "   🔍 Running hyperparameter optimization on training data..."
+                )
             else:
                 logger.info("Running hyperparameter optimization...")
 
             best_params = forecaster.grid_search_hyperparameters(
-                trump_data, harris_data, x_train
+                trump_train, harris_train, x_train  # Use training data only
             )
 
             if args.debug:
                 logger.debug(f"Best parameters found: {best_params}")
 
             if args.verbose:
-                logger.info("   ⚙️  Fitting final models with optimal parameters...")
+                logger.info("   ⚙️  Fitting final models on training data...")
             else:
                 logger.info("Fitting final models...")
 
-            fitted_models = forecaster.fit_final_models(trump_data, harris_data)
+            fitted_models = forecaster.fit_final_models(
+                trump_train, harris_train
+            )  # Use training data only
 
             days_till_then = pd.Series(
                 pd.date_range(start=forecast_date, end=election_day)
@@ -740,7 +796,7 @@ def main():
 
             forecasts = forecaster.forecast(forecast_horizon)
             baselines = forecaster.generate_baseline_forecasts(
-                trump_data, harris_data, forecast_horizon
+                trump_train, harris_train, forecast_horizon  # Use training data only
             )
             fitted_values = forecaster.get_fitted_values()
 
@@ -752,11 +808,14 @@ def main():
                     f"Final forecasts: Trump={forecasts['trump'][-1]:.2f}%, Harris={forecasts['harris'][-1]:.2f}%"
                 )
 
-            # All dates = historical data dates + forecast period dates
+            # All dates = training data dates + forecast period dates
+            # Note: We use training data dates, not all available data dates
             all_dates = (
                 pd.concat(
                     [
-                        available_data["end_date"].drop_duplicates().sort_values(),
+                        pd.concat([trump_train["end_date"], harris_train["end_date"]])
+                        .drop_duplicates()
+                        .sort_values(),
                         days_till_then,
                     ],
                     ignore_index=True,
@@ -836,8 +895,10 @@ def main():
                 electoral_results = {"model": {"winner": "Unknown"}}
 
             # Now create comprehensive forecast record with all results
+            # Use training data (what was actually used for model fitting)
+            training_data = pd.concat([trump_train, harris_train], ignore_index=True)
             daily_forecast_record = create_comprehensive_forecast_record(
-                available_data,
+                training_data,  # Use only training data, not all available data
                 all_dates,
                 days_till_then,
                 fitted_values,
@@ -848,7 +909,24 @@ def main():
                 best_params,
             )
 
-            # Update comprehensive dataset
+            # Update comprehensive dataset - replace any existing records for this forecast date
+            if len(comprehensive_dataset) > 0:
+                # Remove any existing records for this forecast run date
+                existing_records = len(
+                    comprehensive_dataset[
+                        comprehensive_dataset["forecast_run_date"] == forecast_date
+                    ]
+                )
+                if existing_records > 0:
+                    if args.verbose:
+                        logger.info(
+                            f"   🔄 Replacing {existing_records} existing records for {forecast_date}"
+                        )
+                    comprehensive_dataset = comprehensive_dataset[
+                        comprehensive_dataset["forecast_run_date"] != forecast_date
+                    ].copy()
+
+            # Add new records for this forecast date
             comprehensive_dataset = pd.concat(
                 [comprehensive_dataset, daily_forecast_record], ignore_index=True
             )
@@ -867,29 +945,54 @@ def main():
             else:
                 logger.info("Creating forecast visualization...")
 
-            # Add timestamp to avoid overwriting (optional)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
             # 1. Main forecast plot (forecast_images/)
             forecast_plot_path = (
                 Path(data_config.forecast_images_dir)
                 / f"{forecast_date.strftime('%d%b')}.png"
-                # Uncomment next line to add timestamps:
-                # / f"{forecast_date.strftime('%d%b')}_{timestamp}.png"
             )
-            plotter.plot_main_forecast(
-                all_dates,
-                test_dates,
-                trump_data,
-                harris_data,
-                forecasts,
-                baselines,
-                fitted_values,
-                best_params,
-                days_till_then,
-                forecast_date=forecast_date,  # Pass the actual forecast date for title
-                save_path=forecast_plot_path,
-            )
+
+            # Ensure directory exists
+            forecast_plot_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Explicitly remove existing file to force overwrite
+            if forecast_plot_path.exists():
+                if args.verbose:
+                    logger.info(
+                        f"   🔄 Replacing existing forecast plot: {forecast_plot_path.name}"
+                    )
+                elif args.debug:
+                    logger.debug(
+                        f"Replacing existing forecast plot: {forecast_plot_path}"
+                    )
+                try:
+                    forecast_plot_path.unlink()  # Remove the existing file
+                    if args.debug:
+                        logger.debug(f"Deleted existing file: {forecast_plot_path}")
+                except Exception as e:
+                    logger.warning(f"Could not delete existing forecast plot: {e}")
+
+            try:
+                plotter.plot_main_forecast(
+                    all_dates,
+                    test_dates,
+                    trump_train,  # Use training data for plotting
+                    harris_train,  # Use training data for plotting
+                    forecasts,
+                    baselines,
+                    fitted_values,
+                    best_params,
+                    days_till_then,
+                    forecast_date=forecast_date,  # Pass the actual forecast date for title
+                    save_path=forecast_plot_path,
+                )
+
+                if args.debug:
+                    logger.debug(f"✅ Saved forecast plot to: {forecast_plot_path}")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to create forecast plot: {e}")
+                if args.debug:
+                    logger.exception("Forecast plotting error details:")
 
             # 2. Historical forecasts plot (generate for each day)
             if args.verbose:
@@ -910,11 +1013,37 @@ def main():
             # Ensure directory exists
             historical_plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-            plotter.plot_historical_forecasts(
-                historical_data,
-                forecast_date=forecast_date,
-                save_path=historical_plot_path,
-            )
+            # Explicitly remove existing file to force overwrite
+            if historical_plot_path.exists():
+                if args.verbose:
+                    logger.info(
+                        f"   🔄 Replacing existing historical plot: {historical_plot_path.name}"
+                    )
+                elif args.debug:
+                    logger.debug(
+                        f"Replacing existing historical plot: {historical_plot_path}"
+                    )
+                try:
+                    historical_plot_path.unlink()  # Remove the existing file
+                    if args.debug:
+                        logger.debug(f"Deleted existing file: {historical_plot_path}")
+                except Exception as e:
+                    logger.warning(f"Could not delete existing historical plot: {e}")
+
+            try:
+                plotter.plot_historical_forecasts(
+                    historical_data,
+                    forecast_date=forecast_date,
+                    save_path=historical_plot_path,
+                )
+
+                if args.debug:
+                    logger.debug(f"✅ Saved historical plot to: {historical_plot_path}")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to create historical plot: {e}")
+                if args.debug:
+                    logger.exception("Historical plotting error details:")
 
             # Log results based on verbosity
             if args.verbose:
@@ -927,6 +1056,9 @@ def main():
                 )
                 logger.info(f"   💾 Forecast chart: {forecast_plot_path.name}")
                 logger.info(f"   💾 Historical chart: {historical_plot_path.name}")
+                logger.info(
+                    f"   📊 Dataset now contains {len(comprehensive_dataset)} total records"
+                )
             else:
                 logger.info(f"✅ Completed forecast for {forecast_date}")
                 logger.info(

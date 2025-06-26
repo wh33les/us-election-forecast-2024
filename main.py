@@ -2,6 +2,7 @@
 """
 Rolling election forecast pipeline - matches original methodology.
 For each day Oct 23 - Nov 5, uses only data available up to that day.
+MODIFIED: Creates single comprehensive CSV instead of separate df_cleaned and previous files.
 """
 
 import argparse
@@ -108,19 +109,44 @@ def parse_flexible_date(date_string):
     formats_to_try = [
         "%Y-%m-%d",  # 2024-10-25
         "%m-%d-%Y",  # 10-25-2024
+    ]
+
+    # For formats without year, handle them separately to avoid the warning
+    year_agnostic_formats = [
         "%m-%d",  # 10-25 (will add 2024)
         "%m/%d",  # 10/25 (will add 2024)
         "%b %d",  # Oct 25 (will add 2024)
         "%B %d",  # October 25 (will add 2024)
     ]
 
+    # Try full date formats first
     for date_format in formats_to_try:
         try:
             parsed_date = datetime.strptime(date_string, date_format).date()
+            # Validate it's in the reasonable range for this election
+            if date(2024, 10, 1) <= parsed_date <= date(2024, 11, 30):
+                return parsed_date
+        except ValueError:
+            continue
 
-            # If no year in format, assume 2024
-            if date_format in ["%m-%d", "%m/%d", "%b %d", "%B %d"]:
+    # Try year-agnostic formats and manually add 2024
+    for date_format in year_agnostic_formats:
+        try:
+            # Parse without year, using a non-leap year to avoid warnings
+            temp_date_str = (
+                f"2023-{date_string}" if date_format == "%m-%d" else date_string
+            )
+            if date_format == "%m-%d":
+                parsed_date = datetime.strptime(temp_date_str, "2023-%m-%d").date()
                 parsed_date = parsed_date.replace(year=2024)
+            elif date_format == "%m/%d":
+                temp_date_str = f"2023-{date_string.replace('/', '-')}"
+                parsed_date = datetime.strptime(temp_date_str, "2023-%m-%d").date()
+                parsed_date = parsed_date.replace(year=2024)
+            else:
+                parsed_date = datetime.strptime(
+                    f"{date_string} 2024", f"{date_format} %Y"
+                ).date()
 
             # Validate it's in the reasonable range for this election
             if date(2024, 10, 1) <= parsed_date <= date(2024, 11, 30):
@@ -159,159 +185,332 @@ def determine_forecast_dates(args):
     return pd.date_range(start=default_start, end=default_end).date
 
 
-def load_or_create_previous_forecasts():
+def load_or_create_comprehensive_dataset():
     """
-    Load existing previous forecasts or create new dataframe.
-    From your swing_states.py logic.
+    Load existing comprehensive dataset or create new one.
+    Replaces the old load_or_create_previous_forecasts function.
     """
     logger = logging.getLogger(__name__)
-    previous_path = Path("previous.csv")
+    dataset_path = Path("data/election_forecast_2024_comprehensive.csv")
 
-    if previous_path.exists():
-        logger.info("Loading existing previous forecasts...")
-        previous = pd.read_csv(previous_path)
-        previous["date"] = pd.to_datetime(previous["date"]).dt.date
-        logger.info(f"Loaded {len(previous)} historical forecast records")
-        logger.debug(f"Previous forecasts columns: {previous.columns.tolist()}")
-        logger.debug(
-            f"Date range: {previous['date'].min()} to {previous['date'].max()}"
-        )
-        return previous
+    if dataset_path.exists():
+        logger.info("Loading existing comprehensive dataset...")
+        df = pd.read_csv(dataset_path)
+        df["date"] = pd.to_datetime(df["date"]).dt.date
+        df["forecast_run_date"] = pd.to_datetime(df["forecast_run_date"]).dt.date
+        logger.info(f"Loaded {len(df)} existing records")
+        logger.debug(f"Comprehensive dataset columns: {df.columns.tolist()}")
+        logger.debug(f"Date range: {df['date'].min()} to {df['date'].max()}")
+        return df
     else:
-        logger.info("Creating new previous forecasts dataframe...")
-        dates = pd.Series(
-            pd.date_range(start=datetime(2024, 10, 23), end=datetime(2024, 11, 5))
-        ).dt.date
-        previous = pd.DataFrame(
-            {
-                "date": pd.concat([dates, dates]),
-                "candidate": pd.concat(
-                    [
-                        pd.Series("Donald Trump", index=range(len(dates))),
-                        pd.Series("Kamala Harris", index=range(len(dates))),
-                    ]
-                ),
-                "model": np.nan,
-                "baseline": np.nan,
-            }
-        )
-        logger.debug(f"Created new dataframe with shape: {previous.shape}")
-        return previous
+        logger.info("Creating new comprehensive dataset...")
+        return pd.DataFrame()
 
 
-def save_forecasts_to_dataframe(
-    df_cleaned, x, days_till_then, fitted_values, forecasts, baselines, config
-):
-    """
-    Save forecasts to dataframe - from your original forecast.py logic.
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug(
-        f"Input parameters: df_cleaned shape={df_cleaned.shape}, x length={len(x)}, days_till_then length={len(days_till_then)}"
-    )
-
-    # Create forecast data dates (x contains both historical and forecast dates)
-    forecast_data_dates = pd.DataFrame(columns=["end_date", "candidate_name"])
-    forecast_data_dates["end_date"] = pd.concat([x, x], ignore_index=True)
-
-    # Extract candidate names - handle case where data might be empty
-    trump_candidates = df_cleaned[df_cleaned["candidate_name"] == "Donald Trump"][
-        "candidate_name"
-    ]
-    harris_candidates = df_cleaned[df_cleaned["candidate_name"] == "Kamala Harris"][
-        "candidate_name"
-    ]
-
-    logger.debug(
-        f"Trump candidates found: {len(trump_candidates)}, Harris candidates found: {len(harris_candidates)}"
-    )
-
-    forecast_data_dates["candidate_name"] = pd.concat(
-        [
-            trump_candidates,
-            pd.Series("Donald Trump", index=range(len(days_till_then))),
-            harris_candidates,
-            pd.Series("Kamala Harris", index=range(len(days_till_then))),
-        ],
-        ignore_index=True,
-    )
-
-    # Merge with cleaned data
-    df_merged = pd.merge(
-        df_cleaned, forecast_data_dates, on=["candidate_name", "end_date"], how="outer"
-    )
-    logger.debug(f"After merge: {df_merged.shape}")
-
-    # Calculate the number of historical periods (before forecast period)
-    num_historical = len(x) - len(days_till_then)
-    logger.debug(
-        f"Historical periods: {num_historical}, Forecast periods: {len(days_till_then)}"
-    )
-
-    # Fill in model predictions
-    # Model: fitted values for historical data + forecasts for future dates
-    df_merged["model"] = pd.concat(
-        [
-            pd.Series(fitted_values["trump"]),
-            pd.Series(forecasts["trump"]),
-            pd.Series(fitted_values["harris"]),
-            pd.Series(forecasts["harris"]),
-        ],
-        ignore_index=True,
-    )
-
-    # Fill in baseline predictions (matches original logic exactly)
-    # Baseline: NaN for historical data + baseline forecasts for future dates
-    df_merged["drift_pred"] = pd.concat(
-        [
-            pd.Series(np.nan, index=range(num_historical)),  # Trump historical
-            pd.Series(baselines["trump"]),  # Trump forecast
-            pd.Series(np.nan, index=range(num_historical)),  # Harris historical
-            pd.Series(baselines["harris"]),  # Harris forecast
-        ],
-        ignore_index=True,
-    )
-
-    logger.debug(f"Final dataframe shape: {df_merged.shape}")
-    logger.debug(
-        f"Model predictions - Trump range: {df_merged[df_merged['candidate_name']=='Donald Trump']['model'].min():.2f} to {df_merged[df_merged['candidate_name']=='Donald Trump']['model'].max():.2f}"
-    )
-
-    return df_merged
-
-
-def update_previous_forecasts(
-    previous_data,
-    trump_pred_pct,
-    harris_pred_pct,
-    trump_b_pct,
-    harris_b_pct,
+def create_comprehensive_forecast_record(
+    available_data,
+    all_dates,
+    days_till_then,
+    fitted_values,
+    forecasts,
+    baselines,
     forecast_date,
+    electoral_results,
+    best_params,
 ):
     """
-    Update previous forecasts with today's results.
-    From your swing_states.py update logic.
+    Create comprehensive forecast record combining all data.
+    Replaces the old save_forecasts_to_dataframe function.
     """
     logger = logging.getLogger(__name__)
     logger.debug(
-        f"Updating forecasts for {forecast_date}: Trump={trump_pred_pct:.2f}%, Harris={harris_pred_pct:.2f}%"
+        f"Creating comprehensive record for {forecast_date}: "
+        f"available_data shape={available_data.shape}, "
+        f"forecast periods={len(days_till_then)}"
     )
 
-    # Update with this day's numbers
-    previous_data.loc[
-        (previous_data["date"] == forecast_date)
-        & (previous_data["candidate"] == "Donald Trump"),
-        ["model", "baseline"],
-    ] = [trump_pred_pct, trump_b_pct]
+    comprehensive_records = []
+    election_day = date(2024, 11, 5)
 
-    previous_data.loc[
-        (previous_data["date"] == forecast_date)
-        & (previous_data["candidate"] == "Kamala Harris"),
-        ["model", "baseline"],
-    ] = [harris_pred_pct, harris_b_pct]
+    # Add historical polling data
+    for _, row in available_data.iterrows():
+        record = {
+            "date": row["end_date"],
+            "candidate": row["candidate_name"],
+            "forecast_run_date": forecast_date,
+            "record_type": "historical_polling",
+            "data_source": "polling_average",
+            "polling_average": row["daily_average"],
+            "model_prediction": None,
+            "baseline_prediction": None,
+            "days_to_election": (election_day - row["end_date"]).days,
+            "weeks_to_election": round((election_day - row["end_date"]).days / 7, 1),
+            "is_forecast": False,
+            "forecast_horizon": None,
+            "alpha": None,
+            "beta": None,
+            "mase_score": None,
+            "electoral_winner_model": None,
+            "electoral_votes_trump_model": None,
+            "electoral_votes_harris_model": None,
+            "electoral_winner_baseline": None,
+            "electoral_votes_trump_baseline": None,
+            "electoral_votes_harris_baseline": None,
+        }
+        comprehensive_records.append(record)
 
-    logger.debug(f"Updated entries for {forecast_date}")
-    return previous_data
+    # Add model fitted values for historical dates
+    historical_dates = (
+        available_data["end_date"].drop_duplicates().sort_values().tolist()
+    )
+
+    for i, hist_date in enumerate(historical_dates):
+        if i < len(fitted_values["trump"]):
+            # Trump fitted value
+            record = {
+                "date": hist_date,
+                "candidate": "Donald Trump",
+                "forecast_run_date": forecast_date,
+                "record_type": "model_fitted",
+                "data_source": "holt_exponential_smoothing",
+                "polling_average": None,
+                "model_prediction": fitted_values["trump"][i],
+                "baseline_prediction": None,
+                "days_to_election": (election_day - hist_date).days,
+                "weeks_to_election": round((election_day - hist_date).days / 7, 1),
+                "is_forecast": False,
+                "forecast_horizon": None,
+                "alpha": best_params["trump"]["alpha"],
+                "beta": best_params["trump"]["beta"],
+                "mase_score": best_params["trump"]["mase"],
+                "electoral_winner_model": None,
+                "electoral_votes_trump_model": None,
+                "electoral_votes_harris_model": None,
+                "electoral_winner_baseline": None,
+                "electoral_votes_trump_baseline": None,
+                "electoral_votes_harris_baseline": None,
+            }
+            comprehensive_records.append(record)
+
+        if i < len(fitted_values["harris"]):
+            # Harris fitted value
+            record = {
+                "date": hist_date,
+                "candidate": "Kamala Harris",
+                "forecast_run_date": forecast_date,
+                "record_type": "model_fitted",
+                "data_source": "holt_exponential_smoothing",
+                "polling_average": None,
+                "model_prediction": fitted_values["harris"][i],
+                "baseline_prediction": None,
+                "days_to_election": (election_day - hist_date).days,
+                "weeks_to_election": round((election_day - hist_date).days / 7, 1),
+                "is_forecast": False,
+                "forecast_horizon": None,
+                "alpha": best_params["harris"]["alpha"],
+                "beta": best_params["harris"]["beta"],
+                "mase_score": best_params["harris"]["mase"],
+                "electoral_winner_model": None,
+                "electoral_votes_trump_model": None,
+                "electoral_votes_harris_model": None,
+                "electoral_winner_baseline": None,
+                "electoral_votes_trump_baseline": None,
+                "electoral_votes_harris_baseline": None,
+            }
+            comprehensive_records.append(record)
+
+    # Add forecasts
+    for i, forecast_day in enumerate(days_till_then):
+        days_ahead = i + 1
+        is_election_day = forecast_day == election_day
+
+        # Trump forecast
+        record = {
+            "date": forecast_day,
+            "candidate": "Donald Trump",
+            "forecast_run_date": forecast_date,
+            "record_type": "forecast",
+            "data_source": "holt_exponential_smoothing",
+            "polling_average": None,
+            "model_prediction": forecasts["trump"][i],
+            "baseline_prediction": baselines["trump"][i],
+            "days_to_election": (election_day - forecast_day).days,
+            "weeks_to_election": round((election_day - forecast_day).days / 7, 1),
+            "is_forecast": True,
+            "forecast_horizon": days_ahead,
+            "alpha": best_params["trump"]["alpha"],
+            "beta": best_params["trump"]["beta"],
+            "mase_score": best_params["trump"]["mase"],
+            "electoral_winner_model": (
+                electoral_results["model"]["winner"] if is_election_day else None
+            ),
+            "electoral_votes_trump_model": (
+                electoral_results["model"]["trump_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_votes_harris_model": (
+                electoral_results["model"]["harris_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_winner_baseline": (
+                electoral_results["baseline"]["winner"] if is_election_day else None
+            ),
+            "electoral_votes_trump_baseline": (
+                electoral_results["baseline"]["trump_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_votes_harris_baseline": (
+                electoral_results["baseline"]["harris_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+        }
+        comprehensive_records.append(record)
+
+        # Harris forecast
+        record = {
+            "date": forecast_day,
+            "candidate": "Kamala Harris",
+            "forecast_run_date": forecast_date,
+            "record_type": "forecast",
+            "data_source": "holt_exponential_smoothing",
+            "polling_average": None,
+            "model_prediction": forecasts["harris"][i],
+            "baseline_prediction": baselines["harris"][i],
+            "days_to_election": (election_day - forecast_day).days,
+            "weeks_to_election": round((election_day - forecast_day).days / 7, 1),
+            "is_forecast": True,
+            "forecast_horizon": days_ahead,
+            "alpha": best_params["harris"]["alpha"],
+            "beta": best_params["harris"]["beta"],
+            "mase_score": best_params["harris"]["mase"],
+            "electoral_winner_model": (
+                electoral_results["model"]["winner"] if is_election_day else None
+            ),
+            "electoral_votes_trump_model": (
+                electoral_results["model"]["trump_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_votes_harris_model": (
+                electoral_results["model"]["harris_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_winner_baseline": (
+                electoral_results["baseline"]["winner"] if is_election_day else None
+            ),
+            "electoral_votes_trump_baseline": (
+                electoral_results["baseline"]["trump_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+            "electoral_votes_harris_baseline": (
+                electoral_results["baseline"]["harris_electoral_votes"]
+                if is_election_day
+                else None
+            ),
+        }
+        comprehensive_records.append(record)
+
+    # Convert to DataFrame
+    df_comprehensive = pd.DataFrame(comprehensive_records)
+
+    # Sort by date, then candidate, then record type
+    df_comprehensive = df_comprehensive.sort_values(
+        ["date", "candidate", "record_type"]
+    ).reset_index(drop=True)
+
+    logger.debug(f"Created comprehensive record with {len(df_comprehensive)} rows")
+    return df_comprehensive
+
+
+def save_comprehensive_dataset(comprehensive_dataset):
+    """
+    Save the comprehensive dataset to CSV with metadata.
+    """
+    logger = logging.getLogger(__name__)
+
+    if len(comprehensive_dataset) == 0:
+        logger.warning("No records to save")
+        return comprehensive_dataset
+
+    # Add metadata columns
+    comprehensive_dataset = comprehensive_dataset.copy()
+    comprehensive_dataset["actual_election_winner"] = "Donald Trump"
+
+    # Calculate prediction accuracy for forecasts
+    comprehensive_dataset["prediction_correct"] = comprehensive_dataset.apply(
+        lambda row: (
+            (row["model_prediction"] > 50) == (row["candidate"] == "Donald Trump")
+            if pd.notna(row["model_prediction"]) and row["is_forecast"]
+            else None
+        ),
+        axis=1,
+    )
+
+    # Sort by date, candidate, record type
+    comprehensive_dataset = comprehensive_dataset.sort_values(
+        ["date", "candidate", "record_type"]
+    ).reset_index(drop=True)
+
+    # Save comprehensive dataset
+    output_path = "data/election_forecast_2024_comprehensive.csv"
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    comprehensive_dataset.to_csv(output_path, index=False)
+
+    logger.info(
+        f"💾 Updated comprehensive dataset: {len(comprehensive_dataset)} records"
+    )
+    logger.debug(
+        f"   📅 Date range: {comprehensive_dataset['date'].min()} to {comprehensive_dataset['date'].max()}"
+    )
+    logger.debug(
+        f"   🔮 Forecast runs: {comprehensive_dataset['forecast_run_date'].nunique()}"
+    )
+
+    return comprehensive_dataset
+
+
+def create_historical_data_for_plotting(comprehensive_dataset, forecast_date):
+    """
+    Create historical forecast data in the format expected by plotting functions.
+    This replaces the old previous.csv format.
+    """
+    logger = logging.getLogger(__name__)
+
+    # Get all election day forecasts up to the current forecast date
+    election_day = date(2024, 11, 5)
+    historical_forecasts = comprehensive_dataset[
+        (comprehensive_dataset["date"] == election_day)
+        & (comprehensive_dataset["record_type"] == "forecast")
+        & (comprehensive_dataset["forecast_run_date"] <= forecast_date)
+    ].copy()
+
+    if len(historical_forecasts) == 0:
+        logger.debug("No historical forecasts available for plotting")
+        # Return empty dataframe with expected columns
+        return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
+
+    # Convert to the format expected by plotting functions
+    historical_data = []
+
+    for _, row in historical_forecasts.iterrows():
+        record = {
+            "date": row["forecast_run_date"],  # The date the forecast was made
+            "candidate": row["candidate"],
+            "model": row["model_prediction"],
+            "baseline": row["baseline_prediction"],
+        }
+        historical_data.append(record)
+
+    historical_df = pd.DataFrame(historical_data)
+    logger.debug(f"Created historical plotting data with {len(historical_df)} records")
+
+    return historical_df
 
 
 def main():
@@ -332,7 +531,7 @@ def main():
             "Models: Holt exponential smoothing with hyperparameter optimization"
         )
         logger.info(
-            "Outputs: Daily forecast images + daily historical performance plots"
+            "Outputs: Single comprehensive CSV + daily forecast images + historical plots"
         )
         logger.info("=" * 60)
     elif not args.debug:
@@ -430,8 +629,8 @@ def main():
             f"Date range in daily averages: {daily_averages['end_date'].min()} to {daily_averages['end_date'].max()}"
         )
 
-    # Initialize or load previous forecasts dataframe
-    previous_forecasts = load_or_create_previous_forecasts()
+    # Initialize comprehensive dataset
+    comprehensive_dataset = load_or_create_comprehensive_dataset()
 
     election_day = datetime(2024, 11, 5).date()
 
@@ -569,59 +768,98 @@ def main():
             # Test dates = forecast period (from forecast_date to election_day)
             test_dates = days_till_then
 
-            # Save forecasts to dataframe (for electoral college calculation)
-            df_for_calculation = save_forecasts_to_dataframe(
+            # Create simple data for electoral college calculation
+            election_day = date(2024, 11, 5)
+
+            # Create minimal electoral calculation data
+            electoral_calc_data = []
+            if len(forecasts["trump"]) > 0 and len(forecasts["harris"]) > 0:
+                # Get election day predictions (last forecast)
+                trump_final = forecasts["trump"][-1]
+                harris_final = forecasts["harris"][-1]
+                trump_baseline = baselines["trump"][-1]
+                harris_baseline = baselines["harris"][-1]
+
+                electoral_calc_data.append(
+                    {
+                        "candidate_name": "Donald Trump",
+                        "end_date": election_day,
+                        "daily_average": None,
+                        "model": trump_final,
+                        "drift_pred": trump_baseline,
+                    }
+                )
+                electoral_calc_data.append(
+                    {
+                        "candidate_name": "Kamala Harris",
+                        "end_date": election_day,
+                        "daily_average": None,
+                        "model": harris_final,
+                        "drift_pred": harris_baseline,
+                    }
+                )
+
+            electoral_calculation_data = pd.DataFrame(electoral_calc_data)
+
+            if len(electoral_calculation_data) > 0:
+                # Calculate electoral college outcomes
+                if args.verbose:
+                    logger.info("   🗳️  Calculating electoral college outcomes...")
+                else:
+                    logger.info("Calculating electoral college outcomes...")
+
+                electoral_results = calculator.calculate_all_outcomes(
+                    electoral_calculation_data
+                )
+
+                # Extract final predictions for logging
+                trump_pred_pct = electoral_results["model"]["trump_vote_pct"]
+                harris_pred_pct = electoral_results["model"]["harris_vote_pct"]
+
+                if args.debug:
+                    logger.debug(
+                        f"Electoral results: {electoral_results['model']['winner']} wins"
+                    )
+                    logger.debug(
+                        f"Model vote shares: Trump={trump_pred_pct:.2f}%, Harris={harris_pred_pct:.2f}%"
+                    )
+            else:
+                logger.warning(
+                    "Could not calculate electoral outcomes - insufficient data"
+                )
+                trump_pred_pct = (
+                    forecasts["trump"][-1] if len(forecasts["trump"]) > 0 else 0
+                )
+                harris_pred_pct = (
+                    forecasts["harris"][-1] if len(forecasts["harris"]) > 0 else 0
+                )
+                electoral_results = {"model": {"winner": "Unknown"}}
+
+            # Now create comprehensive forecast record with all results
+            daily_forecast_record = create_comprehensive_forecast_record(
                 available_data,
                 all_dates,
                 days_till_then,
                 fitted_values,
                 forecasts,
                 baselines,
-                model_config,
-            )
-
-            # Calculate electoral college outcomes
-            if args.verbose:
-                logger.info("   🗳️  Calculating electoral college outcomes...")
-            else:
-                logger.info("Calculating electoral college outcomes...")
-
-            electoral_results = calculator.calculate_all_outcomes(df_for_calculation)
-
-            # Extract final predictions for previous forecasts tracking
-            trump_pred_pct = electoral_results["model"]["trump_vote_pct"]
-            harris_pred_pct = electoral_results["model"]["harris_vote_pct"]
-            trump_b_pct = electoral_results["baseline"]["trump_vote_pct"]
-            harris_b_pct = electoral_results["baseline"]["harris_vote_pct"]
-
-            if args.debug:
-                logger.debug(
-                    f"Electoral results: {electoral_results['model']['winner']} wins"
-                )
-                logger.debug(
-                    f"Model vote shares: Trump={trump_pred_pct:.2f}%, Harris={harris_pred_pct:.2f}%"
-                )
-
-            # Update previous forecasts dataframe
-            previous_forecasts = update_previous_forecasts(
-                previous_forecasts,
-                trump_pred_pct,
-                harris_pred_pct,
-                trump_b_pct,
-                harris_b_pct,
                 forecast_date,
+                electoral_results,
+                best_params,
             )
 
-            # Save cleaned data for next day's update (matches original forecast.py)
+            # Update comprehensive dataset
+            comprehensive_dataset = pd.concat(
+                [comprehensive_dataset, daily_forecast_record], ignore_index=True
+            )
+
+            # Save comprehensive dataset
             if args.verbose:
-                logger.info("   💾 Saving processed data...")
+                logger.info("   💾 Saving comprehensive dataset...")
             else:
-                logger.info("Saving cleaned data...")
+                logger.info("Saving comprehensive dataset...")
 
-            df_for_calculation.to_csv("data/df_cleaned.csv", index=False)
-
-            # Save updated previous forecasts
-            previous_forecasts.to_csv("data/previous.csv", index=False)
+            comprehensive_dataset = save_comprehensive_dataset(comprehensive_dataset)
 
             # Generate visualizations (both images like your original)
             if args.verbose:
@@ -659,15 +897,19 @@ def main():
             else:
                 logger.info("Creating historical performance visualization...")
 
-            # Filter previous_forecasts to only show data up to current forecast_date
-            historical_data = previous_forecasts[
-                previous_forecasts["date"] <= forecast_date
-            ].copy()
+            # Create historical data from comprehensive dataset
+            historical_data = create_historical_data_for_plotting(
+                comprehensive_dataset, forecast_date
+            )
 
             historical_plot_path = (
                 Path("outputs/previous_forecasts")
                 / f"historical_{forecast_date.strftime('%m%d')}.png"
             )
+
+            # Ensure directory exists
+            historical_plot_path.parent.mkdir(parents=True, exist_ok=True)
+
             plotter.plot_historical_forecasts(
                 historical_data,
                 forecast_date=forecast_date,
@@ -706,21 +948,23 @@ def main():
         logger.info(f"\n🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         logger.info("=" * 50)
         logger.info("📁 Generated outputs:")
+        logger.info(
+            f"   • Comprehensive dataset: data/election_forecast_2024_comprehensive.csv"
+        )
         logger.info(f"   • Daily forecast images: {data_config.forecast_images_dir}/")
         logger.info(
-            f"   • Daily historical plots: outputs/historical_forecasts/historical_YYYYMMDD.png"
+            f"   • Daily historical plots: outputs/previous_forecasts/historical_MMDD.png"
         )
-        logger.info(f"   • Processed data: data/")
         logger.info("=" * 50)
     else:
-        logger.info(f"Saved all data to data/ directory")
         logger.info(
-            "\n🎉 Rolling Election Forecast 2024 pipeline completed successfully!"
+            f"\n🎉 Rolling Election Forecast 2024 pipeline completed successfully!"
         )
-        logger.info(f"Forecast images saved to: {data_config.forecast_images_dir}")
-        logger.info("Daily historical plots saved to: outputs/historical_YYYYMMDD.png")
-        logger.info("Cleaned data saved to: data/df_cleaned.csv")
-        logger.info("Historical forecasts saved to: data/previous.csv")
+        logger.info(
+            f"📊 Comprehensive dataset: data/election_forecast_2024_comprehensive.csv"
+        )
+        logger.info(f"📈 Forecast images: {data_config.forecast_images_dir}")
+        logger.info("📊 Historical plots: outputs/previous_forecasts/")
 
 
 if __name__ == "__main__":

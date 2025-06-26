@@ -38,12 +38,8 @@ class DataConfig:
 
     # Data file paths
     raw_data_path: str = "data/president_polls.csv"
-    cleaned_data_path: str = (
-        "data/processed/df_cleaned.csv"  # Will be saved in data/processed/
-    )
-    previous_forecasts_path: str = (
-        "data/processed/previous.csv"  # Will be saved in data/processed/
-    )
+    cleaned_data_path: str = "data/df_cleaned.csv"  # Will be saved in data/
+    previous_forecasts_path: str = "data/previous.csv"  # Will be saved in data/
 
     # Output directories
     forecast_images_dir: str = "outputs/forecast_images"

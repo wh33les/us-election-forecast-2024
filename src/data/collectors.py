@@ -18,8 +18,7 @@ class PollingDataCollector:
 
     def load_raw_data(self) -> pd.DataFrame:
         """
-        Load raw polling data from CSV file.
-        From your original forecast.py data loading section.
+        Load raw polling data from CSV file specified in ../config.py.
         """
         try:
             logger.info(f"Loading raw data from {self.config.raw_data_path}")

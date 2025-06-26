@@ -164,6 +164,131 @@ class ElectionPlotter:
             # Close figure even if not saving
             plt.close()
 
+    def _plot_continuous_segments(
+        self, data, color, label_prefix, line_style="-", marker="o", markersize=4
+    ):
+        """
+        Plot data in continuous segments, breaking lines at gaps.
+        """
+        if len(data) == 0:
+            return
+
+        # Sort data by date
+        data_sorted = data.sort_values("date").copy()
+        data_sorted["plot_date"] = pd.to_datetime(data_sorted["date"])
+
+        # Find gaps in the date sequence (more than 1 day apart)
+        gaps = []
+        for i in range(1, len(data_sorted)):
+            current_date = data_sorted.iloc[i]["plot_date"]
+            previous_date = data_sorted.iloc[i - 1]["plot_date"]
+            days_diff = (current_date - previous_date).days
+            if days_diff > 1:
+                gaps.append(i)
+
+        # Split into continuous segments
+        segments = []
+        start_idx = 0
+        for gap_idx in gaps:
+            segments.append(data_sorted.iloc[start_idx:gap_idx])
+            start_idx = gap_idx
+        segments.append(data_sorted.iloc[start_idx:])  # Last segment
+
+        # Plot each segment separately
+        for i, segment in enumerate(segments):
+            if len(segment) == 0:
+                continue
+
+            # Only add label to the first segment to avoid duplicate legend entries
+            segment_label = label_prefix if i == 0 else None
+
+            if len(segment) == 1:
+                # Single point - just plot marker
+                plt.plot(
+                    segment["plot_date"],
+                    segment["model"],
+                    color=color,
+                    marker=marker,
+                    markersize=markersize,
+                    linestyle="None",
+                    label=segment_label,
+                )
+            else:
+                # Multiple points - plot line segment
+                plt.plot(
+                    segment["plot_date"],
+                    segment["model"],
+                    color=color,
+                    linestyle=line_style,
+                    marker=marker,
+                    markersize=markersize,
+                    linewidth=2,
+                    label=segment_label,
+                )
+
+    def _plot_baseline_segments(
+        self, data, color, label_prefix, line_style="--", marker="s", markersize=3
+    ):
+        """
+        Plot baseline data in continuous segments, breaking lines at gaps.
+        """
+        baseline_data = data[data["baseline"].notna()]
+        if len(baseline_data) == 0:
+            return
+
+        # Sort data by date
+        data_sorted = baseline_data.sort_values("date").copy()
+        data_sorted["plot_date"] = pd.to_datetime(data_sorted["date"])
+
+        # Find gaps in the date sequence (more than 1 day apart)
+        gaps = []
+        for i in range(1, len(data_sorted)):
+            current_date = data_sorted.iloc[i]["plot_date"]
+            previous_date = data_sorted.iloc[i - 1]["plot_date"]
+            days_diff = (current_date - previous_date).days
+            if days_diff > 1:
+                gaps.append(i)
+
+        # Split into continuous segments
+        segments = []
+        start_idx = 0
+        for gap_idx in gaps:
+            segments.append(data_sorted.iloc[start_idx:gap_idx])
+            start_idx = gap_idx
+        segments.append(data_sorted.iloc[start_idx:])  # Last segment
+
+        # Plot each segment separately
+        for i, segment in enumerate(segments):
+            if len(segment) == 0:
+                continue
+
+            # Only add label to the first segment to avoid duplicate legend entries
+            segment_label = label_prefix if i == 0 else None
+
+            if len(segment) == 1:
+                # Single point - just plot marker
+                plt.plot(
+                    segment["plot_date"],
+                    segment["baseline"],
+                    color=color,
+                    marker=marker,
+                    markersize=markersize,
+                    linestyle="None",
+                    label=segment_label,
+                )
+            else:
+                # Multiple points - plot line segment
+                plt.plot(
+                    segment["plot_date"],
+                    segment["baseline"],
+                    color=color,
+                    linestyle=line_style,
+                    marker=marker,
+                    markersize=markersize,
+                    linewidth=2,
+                    label=segment_label,
+                )
+
     def plot_historical_forecasts(
         self,
         previous_forecasts: pd.DataFrame,
@@ -172,6 +297,7 @@ class ElectionPlotter:
     ):
         """
         Create historical forecasts plot showing how predictions changed over time.
+        Now with gap-aware plotting that breaks lines at missing dates.
         """
         logger.info("Creating historical forecasts plot...")
 
@@ -237,69 +363,46 @@ class ElectionPlotter:
         # Create figure
         plt.figure(figsize=(12, 6))
 
-        # Convert dates to datetime objects to ensure proper plotting
+        # Plot model predictions with gap-aware line breaking
         if len(trump_data) > 0:
-            trump_data_sorted = trump_data.sort_values("date").copy()
-            # Ensure dates are datetime objects for matplotlib
-            trump_data_sorted["plot_date"] = pd.to_datetime(trump_data_sorted["date"])
-
-            plt.plot(
-                trump_data_sorted["plot_date"],
-                trump_data_sorted["model"],
-                "r-",
-                label="Trump (model prediction)",
+            self._plot_continuous_segments(
+                trump_data,
+                color="red",
+                label_prefix="Trump (model prediction)",
+                line_style="-",
                 marker="o",
                 markersize=4,
-                linewidth=2,
             )
 
         if len(harris_data) > 0:
-            harris_data_sorted = harris_data.sort_values("date").copy()
-            # Ensure dates are datetime objects for matplotlib
-            harris_data_sorted["plot_date"] = pd.to_datetime(harris_data_sorted["date"])
-
-            plt.plot(
-                harris_data_sorted["plot_date"],
-                harris_data_sorted["model"],
-                "b-",
-                label="Harris (model prediction)",
+            self._plot_continuous_segments(
+                harris_data,
+                color="blue",
+                label_prefix="Harris (model prediction)",
+                line_style="-",
                 marker="o",
                 markersize=4,
-                linewidth=2,
             )
 
-        # Plot baseline predictions - only where not NaN
-        trump_baseline_data = trump_data[trump_data["baseline"].notna()]
-        harris_baseline_data = harris_data[harris_data["baseline"].notna()]
-
-        if len(trump_baseline_data) > 0:
-            trump_baseline_sorted = trump_baseline_data.sort_values("date").copy()
-            trump_baseline_sorted["plot_date"] = pd.to_datetime(
-                trump_baseline_sorted["date"]
-            )
-            plt.plot(
-                trump_baseline_sorted["plot_date"],
-                trump_baseline_sorted["baseline"],
-                "r--",
-                label="Trump (baseline)",
+        # Plot baseline predictions with gap-aware line breaking
+        if len(trump_data) > 0:
+            self._plot_baseline_segments(
+                trump_data,
+                color="red",
+                label_prefix="Trump (baseline)",
+                line_style="--",
                 marker="s",
                 markersize=3,
-                linewidth=2,
             )
 
-        if len(harris_baseline_data) > 0:
-            harris_baseline_sorted = harris_baseline_data.sort_values("date").copy()
-            harris_baseline_sorted["plot_date"] = pd.to_datetime(
-                harris_baseline_sorted["date"]
-            )
-            plt.plot(
-                harris_baseline_sorted["plot_date"],
-                harris_baseline_sorted["baseline"],
-                "b--",
-                label="Harris (baseline)",
+        if len(harris_data) > 0:
+            self._plot_baseline_segments(
+                harris_data,
+                color="blue",
+                label_prefix="Harris (baseline)",
+                line_style="--",
                 marker="s",
                 markersize=3,
-                linewidth=2,
             )
 
         # Formatting
@@ -339,6 +442,9 @@ class ElectionPlotter:
             f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
         )
         plt.legend()
+
+        # Add subtle grid for better readability
+        plt.grid(True, alpha=0.3)
 
         # Save plot with proper overwrite handling
         if save_path:

@@ -291,9 +291,13 @@ def create_comprehensive_forecast_record(
                 "electoral_winner_model": None,
                 "electoral_votes_trump_model": None,
                 "electoral_votes_harris_model": None,
+                "trump_states_model": None,
+                "harris_states_model": None,
                 "electoral_winner_baseline": None,
                 "electoral_votes_trump_baseline": None,
                 "electoral_votes_harris_baseline": None,
+                "trump_states_baseline": None,
+                "harris_states_baseline": None,
             }
             comprehensive_records.append(record)
 
@@ -318,9 +322,13 @@ def create_comprehensive_forecast_record(
                 "electoral_winner_model": None,
                 "electoral_votes_trump_model": None,
                 "electoral_votes_harris_model": None,
+                "trump_states_model": None,
+                "harris_states_model": None,
                 "electoral_winner_baseline": None,
                 "electoral_votes_trump_baseline": None,
                 "electoral_votes_harris_baseline": None,
+                "trump_states_baseline": None,
+                "harris_states_baseline": None,
             }
             comprehensive_records.append(record)
 
@@ -827,64 +835,111 @@ def main():
             # Test dates = forecast period (from forecast_date to election_day)
             test_dates = days_till_then
 
-            # Create simple data for electoral college calculation
-            election_day = date(2024, 11, 5)
+            # Only calculate electoral outcomes for Election Day forecasts
+            election_day_date = date(2024, 11, 5)
+            if forecast_date == election_day_date:
+                # Create simple data for electoral college calculation
+                electoral_calc_data = []
+                if len(forecasts["trump"]) > 0 and len(forecasts["harris"]) > 0:
+                    # Get election day predictions (last forecast)
+                    trump_final = forecasts["trump"][-1]
+                    harris_final = forecasts["harris"][-1]
+                    trump_baseline = baselines["trump"][-1]
+                    harris_baseline = baselines["harris"][-1]
 
-            # Create minimal electoral calculation data
-            electoral_calc_data = []
-            if len(forecasts["trump"]) > 0 and len(forecasts["harris"]) > 0:
-                # Get election day predictions (last forecast)
-                trump_final = forecasts["trump"][-1]
-                harris_final = forecasts["harris"][-1]
-                trump_baseline = baselines["trump"][-1]
-                harris_baseline = baselines["harris"][-1]
+                    electoral_calc_data.append(
+                        {
+                            "candidate_name": "Donald Trump",
+                            "end_date": election_day_date,
+                            "daily_average": None,
+                            "model": trump_final,
+                            "drift_pred": trump_baseline,
+                        }
+                    )
+                    electoral_calc_data.append(
+                        {
+                            "candidate_name": "Kamala Harris",
+                            "end_date": election_day_date,
+                            "daily_average": None,
+                            "model": harris_final,
+                            "drift_pred": harris_baseline,
+                        }
+                    )
 
-                electoral_calc_data.append(
-                    {
-                        "candidate_name": "Donald Trump",
-                        "end_date": election_day,
-                        "daily_average": None,
-                        "model": trump_final,
-                        "drift_pred": trump_baseline,
-                    }
-                )
-                electoral_calc_data.append(
-                    {
-                        "candidate_name": "Kamala Harris",
-                        "end_date": election_day,
-                        "daily_average": None,
-                        "model": harris_final,
-                        "drift_pred": harris_baseline,
-                    }
-                )
+                electoral_calculation_data = pd.DataFrame(electoral_calc_data)
 
-            electoral_calculation_data = pd.DataFrame(electoral_calc_data)
+                if len(electoral_calculation_data) > 0:
+                    # Calculate electoral college outcomes
+                    if args.verbose:
+                        logger.info(
+                            "   🗳️  Calculating electoral college outcomes for Election Day..."
+                        )
+                    else:
+                        logger.info("Calculating electoral college outcomes...")
 
-            if len(electoral_calculation_data) > 0:
-                # Calculate electoral college outcomes
-                if args.verbose:
-                    logger.info("   🗳️  Calculating electoral college outcomes...")
+                    electoral_results = calculator.calculate_all_outcomes(
+                        electoral_calculation_data
+                    )
+
+                    # Extract final predictions for logging
+                    trump_pred_pct = electoral_results["model"]["trump_vote_pct"]
+                    harris_pred_pct = electoral_results["model"]["harris_vote_pct"]
+
+                    if args.debug:
+                        logger.debug(
+                            f"Electoral results: {electoral_results['model']['winner']} wins"
+                        )
+                        logger.debug(
+                            f"Model vote shares: Trump={trump_pred_pct:.2f}%, Harris={harris_pred_pct:.2f}%"
+                        )
+                        logger.debug(
+                            f"Trump: {electoral_results['model']['trump_electoral_votes']} EVs = 219 safe + {max(0, electoral_results['model']['trump_electoral_votes'] - 219)} swing states {electoral_results['model']['trump_states']}"
+                        )
+                        logger.debug(
+                            f"Harris: {electoral_results['model']['harris_electoral_votes']} EVs = 226 safe + {max(0, electoral_results['model']['harris_electoral_votes'] - 226)} swing states {electoral_results['model']['harris_states']}"
+                        )
                 else:
-                    logger.info("Calculating electoral college outcomes...")
-
-                electoral_results = calculator.calculate_all_outcomes(
-                    electoral_calculation_data
-                )
-
-                # Extract final predictions for logging
-                trump_pred_pct = electoral_results["model"]["trump_vote_pct"]
-                harris_pred_pct = electoral_results["model"]["harris_vote_pct"]
-
-                if args.debug:
-                    logger.debug(
-                        f"Electoral results: {electoral_results['model']['winner']} wins"
+                    logger.warning(
+                        "Could not calculate electoral outcomes - insufficient data"
                     )
-                    logger.debug(
-                        f"Model vote shares: Trump={trump_pred_pct:.2f}%, Harris={harris_pred_pct:.2f}%"
+                    trump_pred_pct = (
+                        forecasts["trump"][-1] if len(forecasts["trump"]) > 0 else 0
                     )
+                    harris_pred_pct = (
+                        forecasts["harris"][-1] if len(forecasts["harris"]) > 0 else 0
+                    )
+                    electoral_results = {
+                        "model": {
+                            "winner": "Unknown",
+                            "trump_electoral_votes": None,
+                            "harris_electoral_votes": None,
+                            "trump_states": [],
+                            "harris_states": [],
+                            "trump_vote_pct": trump_pred_pct,
+                            "harris_vote_pct": harris_pred_pct,
+                        },
+                        "baseline": {
+                            "winner": "Unknown",
+                            "trump_electoral_votes": None,
+                            "harris_electoral_votes": None,
+                            "trump_states": [],
+                            "harris_states": [],
+                            "trump_vote_pct": (
+                                baselines["trump"][-1]
+                                if len(baselines["trump"]) > 0
+                                else 0
+                            ),
+                            "harris_vote_pct": (
+                                baselines["harris"][-1]
+                                if len(baselines["harris"]) > 0
+                                else 0
+                            ),
+                        },
+                    }
             else:
-                logger.warning(
-                    "Could not calculate electoral outcomes - insufficient data"
+                # For non-Election Day forecasts, just use vote percentages
+                logger.info(
+                    "Skipping electoral calculation (only calculated for Election Day)"
                 )
                 trump_pred_pct = (
                     forecasts["trump"][-1] if len(forecasts["trump"]) > 0 else 0
@@ -892,7 +947,32 @@ def main():
                 harris_pred_pct = (
                     forecasts["harris"][-1] if len(forecasts["harris"]) > 0 else 0
                 )
-                electoral_results = {"model": {"winner": "Unknown"}}
+                electoral_results = {
+                    "model": {
+                        "winner": "N/A (interim forecast)",
+                        "trump_electoral_votes": None,
+                        "harris_electoral_votes": None,
+                        "trump_states": [],
+                        "harris_states": [],
+                        "trump_vote_pct": trump_pred_pct,
+                        "harris_vote_pct": harris_pred_pct,
+                    },
+                    "baseline": {
+                        "winner": "N/A (interim forecast)",
+                        "trump_electoral_votes": None,
+                        "harris_electoral_votes": None,
+                        "trump_states": [],
+                        "harris_states": [],
+                        "trump_vote_pct": (
+                            baselines["trump"][-1] if len(baselines["trump"]) > 0 else 0
+                        ),
+                        "harris_vote_pct": (
+                            baselines["harris"][-1]
+                            if len(baselines["harris"]) > 0
+                            else 0
+                        ),
+                    },
+                }
 
             # Now create comprehensive forecast record with all results
             # Use training data (what was actually used for model fitting)
@@ -1051,9 +1131,67 @@ def main():
                 logger.info(
                     f"   📊 Model prediction: Trump {trump_pred_pct:.1f}%, Harris {harris_pred_pct:.1f}%"
                 )
-                logger.info(
-                    f"   🏆 Electoral outcome: {electoral_results['model']['winner']} wins"
-                )
+                if forecast_date == election_day_date:
+                    # Calculate swing state electoral votes for each candidate
+                    trump_swing_evs = max(
+                        0, electoral_results["model"]["trump_electoral_votes"] - 219
+                    )  # Trump safe states
+                    harris_swing_evs = max(
+                        0, electoral_results["model"]["harris_electoral_votes"] - 226
+                    )  # Harris safe states
+
+                    # State name mapping for better readability
+                    state_names = {
+                        "AZ": "Arizona (11)",
+                        "GA": "Georgia (16)",
+                        "NC": "North Carolina (16)",
+                        "NV": "Nevada (6)",
+                        "PA": "Pennsylvania (19)",
+                        "WI": "Wisconsin (10)",
+                        "MI": "Michigan (15)",
+                    }
+
+                    winner = electoral_results["model"]["winner"]
+                    winner_evs = (
+                        electoral_results["model"]["trump_electoral_votes"]
+                        if winner == "Trump"
+                        else electoral_results["model"]["harris_electoral_votes"]
+                    )
+
+                    logger.info(
+                        f"   🏆 Electoral outcome: {winner} wins with {winner_evs} electoral votes"
+                    )
+                    logger.info("   📊 Electoral Vote Breakdown:")
+                    logger.info(
+                        f"      Trump: {electoral_results['model']['trump_electoral_votes']} total = 219 safe + {trump_swing_evs} swing"
+                    )
+                    if electoral_results["model"]["trump_states"]:
+                        trump_state_details = [
+                            state_names.get(state, state)
+                            for state in electoral_results["model"]["trump_states"]
+                        ]
+                        logger.info(
+                            f"      Trump swing states: {', '.join(trump_state_details)}"
+                        )
+                    else:
+                        logger.info(f"      Trump swing states: None")
+                    logger.info(
+                        f"      Harris: {electoral_results['model']['harris_electoral_votes']} total = 226 safe + {harris_swing_evs} swing"
+                    )
+                    if electoral_results["model"]["harris_states"]:
+                        harris_state_details = [
+                            state_names.get(state, state)
+                            for state in electoral_results["model"]["harris_states"]
+                        ]
+                        logger.info(
+                            f"      Harris swing states: {', '.join(harris_state_details)}"
+                        )
+                    else:
+                        logger.info(f"      Harris swing states: None")
+                else:
+                    logger.info(
+                        "   📈 Interim forecast (electoral calculation only on Election Day)"
+                    )
                 logger.info(f"   💾 Forecast chart: {forecast_plot_path.name}")
                 logger.info(f"   💾 Historical chart: {historical_plot_path.name}")
                 logger.info(
@@ -1064,9 +1202,67 @@ def main():
                 logger.info(
                     f"   Model prediction: Trump {trump_pred_pct:.1f}%, Harris {harris_pred_pct:.1f}%"
                 )
-                logger.info(
-                    f"   Electoral outcome: {electoral_results['model']['winner']} wins"
-                )
+                if forecast_date == election_day_date:
+                    # Calculate swing state electoral votes for each candidate
+                    trump_swing_evs = max(
+                        0, electoral_results["model"]["trump_electoral_votes"] - 219
+                    )  # Trump safe states
+                    harris_swing_evs = max(
+                        0, electoral_results["model"]["harris_electoral_votes"] - 226
+                    )  # Harris safe states
+
+                    # State name mapping for better readability
+                    state_names = {
+                        "AZ": "Arizona (11)",
+                        "GA": "Georgia (16)",
+                        "NC": "North Carolina (16)",
+                        "NV": "Nevada (6)",
+                        "PA": "Pennsylvania (19)",
+                        "WI": "Wisconsin (10)",
+                        "MI": "Michigan (15)",
+                    }
+
+                    winner = electoral_results["model"]["winner"]
+                    winner_evs = (
+                        electoral_results["model"]["trump_electoral_votes"]
+                        if winner == "Trump"
+                        else electoral_results["model"]["harris_electoral_votes"]
+                    )
+
+                    logger.info(
+                        f"   Electoral outcome: {winner} wins with {winner_evs} electoral votes"
+                    )
+                    logger.info("   Electoral Vote Breakdown:")
+                    logger.info(
+                        f"   Trump: {electoral_results['model']['trump_electoral_votes']} total = 219 safe + {trump_swing_evs} swing"
+                    )
+                    if electoral_results["model"]["trump_states"]:
+                        trump_state_details = [
+                            state_names.get(state, state)
+                            for state in electoral_results["model"]["trump_states"]
+                        ]
+                        logger.info(
+                            f"   Trump swing states: {', '.join(trump_state_details)}"
+                        )
+                    else:
+                        logger.info(f"   Trump swing states: None")
+                    logger.info(
+                        f"   Harris: {electoral_results['model']['harris_electoral_votes']} total = 226 safe + {harris_swing_evs} swing"
+                    )
+                    if electoral_results["model"]["harris_states"]:
+                        harris_state_details = [
+                            state_names.get(state, state)
+                            for state in electoral_results["model"]["harris_states"]
+                        ]
+                        logger.info(
+                            f"   Harris swing states: {', '.join(harris_state_details)}"
+                        )
+                    else:
+                        logger.info(f"   Harris swing states: None")
+                else:
+                    logger.info(
+                        "   Interim forecast (electoral calculation only on Election Day)"
+                    )
 
         except Exception as e:
             if args.debug:

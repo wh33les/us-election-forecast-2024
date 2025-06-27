@@ -12,16 +12,13 @@ class PollingDataCollector:
     """Handles loading and initial processing of polling data."""
 
     def __init__(self, config):
-        """Initialize with data configuration."""
         self.config = config
 
     def load_raw_data(self) -> pd.DataFrame:
-        """Load raw polling data from CSV file specified in config."""
+        """Load raw polling data from CSV file."""
         try:
             logger.info(f"Loading raw data from {self.config.raw_data_path}")
             raw_data = pd.read_csv(self.config.raw_data_path)
-
-            # Parse dates
             raw_data["end_date"] = pd.to_datetime(
                 raw_data["end_date"], format="mixed"
             ).dt.date
@@ -36,211 +33,156 @@ class PollingDataCollector:
             logger.error(f"Error loading raw data: {e}")
             raise
 
-    def load_incremental_raw_data(self, target_date=None) -> tuple:
-        """
-        Load raw data for ALL missing dates up to target_date.
+    def load_incremental_data(self, target_date=None) -> pd.DataFrame:
+        """Load data incrementally for target date - PERFORMANCE OPTIMIZED."""
+        logger.info(f"Loading data incrementally for target date: {target_date}")
 
-        Args:
-            target_date: Date to load data up to. Finds ALL missing dates from Biden dropout to target_date.
-
-        Returns:
-            tuple: (existing_processed_data, new_raw_data, missing_dates_list)
-        """
-        logger.info("Loading data for incremental update...")
-
-        # Set target date (default to today if not specified)
-        if target_date:
-            target_date_obj = pd.to_datetime(target_date).date()
-        else:
-            target_date_obj = pd.Timestamp.today().date()
-
-        logger.info(f"Target date for incremental update: {target_date_obj}")
-
-        # Check if comprehensive dataset exists
+        # Check what polling dates we already have processed
         comprehensive_path = Path("data/election_forecast_2024_comprehensive.csv")
+        existing_polling_dates = set()
 
         if comprehensive_path.exists():
-            logger.info("Loading existing comprehensive dataset...")
-            existing_data = pd.read_csv(comprehensive_path)
+            # FIXED: Only load the specific columns we need to avoid memory issues
+            existing_data = pd.read_csv(
+                comprehensive_path,
+                usecols=["date", "candidate", "record_type", "polling_average"],
+                dtype={
+                    "candidate": "string",
+                    "record_type": "string",
+                },  # Fix mixed type warnings
+            )
             existing_data["date"] = pd.to_datetime(existing_data["date"]).dt.date
 
-            # Get all dates with actual polling data (not forecasts)
-            polling_data = existing_data[
+            # FIXED: Only get unique polling dates, not all records
+            polling_records = existing_data[
                 existing_data["record_type"] == "historical_polling"
             ]
-
-            if len(polling_data) > 0:
-                existing_dates = set(polling_data["date"].unique())
+            if len(polling_records) > 0:
+                existing_polling_dates = set(polling_records["date"].unique())
                 logger.info(
-                    f"Found existing polling data for {len(existing_dates)} dates"
+                    f"Found existing polling data for {len(existing_polling_dates)} unique dates"
                 )
-            else:
-                existing_dates = set()
-                logger.info("No existing polling data found in comprehensive dataset")
-        else:
-            logger.info("No existing comprehensive dataset - starting fresh")
-            existing_data = pd.DataFrame()
-            existing_dates = set()
 
-        # Generate full date range from Biden dropout to target date
+        # Determine target date range
         biden_dropout = pd.to_datetime(self.config.biden_dropout_date).date()
-        full_date_range = pd.date_range(
+        target_date_obj = (
+            pd.to_datetime(target_date).date()
+            if target_date
+            else pd.Timestamp.today().date()
+        )
+
+        # FIXED: Only process data up to target date (no future data)
+        date_range_needed = pd.date_range(
             start=biden_dropout, end=target_date_obj, freq="D"
         ).date
+        available_dates = [
+            d for d in date_range_needed if d < target_date_obj
+        ]  # Exclude target date itself
 
-        # Find ALL missing dates in the range
-        missing_dates = [date for date in full_date_range if date not in existing_dates]
+        missing_dates = [
+            date for date in available_dates if date not in existing_polling_dates
+        ]
 
-        logger.info(f"Date range analysis:")
         logger.info(
-            f"  Full range: {biden_dropout} to {target_date_obj} ({len(full_date_range)} days)"
+            f"Need data for {len(available_dates)} dates, {len(missing_dates)} are missing"
         )
-        logger.info(f"  Existing dates: {len(existing_dates)}")
-        logger.info(f"  Missing dates: {len(missing_dates)}")
 
-        if len(missing_dates) > 0:
-            logger.info(
-                f"  Missing date range: {min(missing_dates)} to {max(missing_dates)}"
+        # Load and process only missing data
+        if len(missing_dates) == 0:
+            # All data exists, extract it efficiently
+            return self._extract_existing_daily_averages_optimized(
+                comprehensive_path, available_dates
             )
 
-        # Load raw data
+        # Process missing dates
         raw_data = self.load_raw_data()
+        new_raw_data = raw_data[raw_data["end_date"].isin(missing_dates)].copy()
 
-        # Filter raw data to only include missing dates
-        if len(missing_dates) > 0:
-            new_raw_data = raw_data[raw_data["end_date"].isin(missing_dates)].copy()
-        else:
-            new_raw_data = pd.DataFrame()
-
-        logger.info(f"Raw records for missing dates: {len(new_raw_data)}")
-        if len(new_raw_data) > 0:
-            logger.info(
-                f"New data date range: {new_raw_data['end_date'].min()} to {new_raw_data['end_date'].max()}"
+        if len(new_raw_data) == 0:
+            logger.info("No new raw data found for missing dates")
+            return self._extract_existing_daily_averages_optimized(
+                comprehensive_path, available_dates
             )
 
-        return existing_data, new_raw_data, missing_dates
+        # Process new data
+        from .processors import PollingDataProcessor
 
-    def extract_existing_daily_averages(self, existing_data) -> pd.DataFrame:
-        """
-        Extract daily averages from existing comprehensive dataset.
+        processor = PollingDataProcessor(self.config)
 
-        Args:
-            existing_data: DataFrame from comprehensive dataset
+        filtered_data = processor.filter_polling_data(new_raw_data)
+        new_daily_averages = processor.calculate_daily_averages(filtered_data)
 
-        Returns:
-            DataFrame: Daily averages in the format expected by the pipeline
-        """
-        if len(existing_data) == 0:
+        # Combine with existing data efficiently
+        existing_averages = self._extract_existing_daily_averages_optimized(
+            comprehensive_path, available_dates
+        )
+
+        if len(existing_averages) == 0:
+            combined_averages = new_daily_averages
+        else:
+            combined_averages = pd.concat(
+                [existing_averages, new_daily_averages], ignore_index=True
+            )
+            # FIXED: Only keep unique candidate-date pairs
+            combined_averages = combined_averages.drop_duplicates(
+                subset=["candidate_name", "end_date"], keep="last"
+            )
+
+        # FIXED: Filter to only dates we actually need
+        combined_averages = combined_averages[
+            combined_averages["end_date"].isin(available_dates)
+        ].copy()
+
+        combined_averages.sort_values(
+            ["candidate_name", "end_date"], inplace=True, ignore_index=True
+        )
+
+        logger.info(
+            f"Final daily averages: {len(combined_averages)} total records for {len(available_dates)} dates"
+        )
+        return combined_averages
+
+    def load_data_for_incremental_pipeline(self, target_date=None) -> pd.DataFrame:
+        """Main method to load data for incremental pipeline - compatibility wrapper."""
+        return self.load_incremental_data(target_date)
+
+    def _extract_existing_daily_averages_optimized(
+        self, comprehensive_path, needed_dates
+    ) -> pd.DataFrame:
+        """Extract daily averages efficiently - PERFORMANCE OPTIMIZED."""
+        if not comprehensive_path.exists():
             return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
 
-        # Extract records with polling averages
+        # FIXED: Only load what we need
+        existing_data = pd.read_csv(
+            comprehensive_path,
+            usecols=["date", "candidate", "record_type", "polling_average"],
+            dtype={"candidate": "string", "record_type": "string"},
+        )
+        existing_data["date"] = pd.to_datetime(existing_data["date"]).dt.date
+
+        # FIXED: Only get polling records for dates we actually need
         polling_records = existing_data[
             (existing_data["record_type"] == "historical_polling")
             & (existing_data["polling_average"].notna())
+            & (existing_data["date"].isin(needed_dates))  # Only needed dates
         ].copy()
 
         if len(polling_records) == 0:
             return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
 
-        # Convert to the format expected by the rest of the pipeline
-        daily_averages = polling_records[
-            ["candidate", "date", "polling_average"]
-        ].copy()
+        # FIXED: Get unique polling averages per candidate-date
+        daily_averages = (
+            polling_records.groupby(["candidate", "date"])["polling_average"]
+            .first()
+            .reset_index()
+        )
         daily_averages.columns = ["candidate_name", "end_date", "daily_average"]
 
-        # Sort by candidate and date
-        daily_averages.sort_values(
-            ["candidate_name", "end_date"],
-            ascending=[True, True],
-            inplace=True,
-            ignore_index=True,
+        return daily_averages.sort_values(["candidate_name", "end_date"]).reset_index(
+            drop=True
         )
 
-        logger.info(f"Extracted {len(daily_averages)} existing daily averages")
-        return daily_averages
-
-    def load_data_for_incremental_pipeline(self, target_date=None) -> pd.DataFrame:
-        """
-        Main method to load data for incremental pipeline.
-        Finds ALL missing dates up to target_date and processes them.
-
-        Args:
-            target_date: Date to process data up to
-
-        Returns:
-            DataFrame: Combined daily averages (existing + new)
-        """
-        logger.info(f"Loading data incrementally for target date: {target_date}")
-
-        # Load incremental data - now gets ALL missing dates
-        existing_data, new_raw_data, missing_dates = self.load_incremental_raw_data(
-            target_date
-        )
-
-        # Extract existing daily averages
-        existing_daily_averages = self.extract_existing_daily_averages(existing_data)
-
-        # If no new data, return existing data
-        if len(new_raw_data) == 0:
-            if len(missing_dates) == 0:
-                logger.info("No missing dates - data is up to date")
-            else:
-                logger.warning(
-                    f"Found {len(missing_dates)} missing dates but no raw data available for them"
-                )
-                logger.warning(
-                    f"Missing dates: {missing_dates[:5]}{'...' if len(missing_dates) > 5 else ''}"
-                )
-            return existing_daily_averages
-
-        # Process new data using existing pipeline components
-        from .processors import PollingDataProcessor
-
-        processor = PollingDataProcessor(self.config)
-
-        logger.info(f"Processing raw data for {len(missing_dates)} missing dates...")
-
-        # Filter new data to Biden dropout and later (shouldn't be needed but safety check)
-        biden_out = pd.to_datetime(self.config.biden_dropout_date).date()
-        new_raw_data = new_raw_data[new_raw_data["end_date"] >= biden_out]
-
-        # Process new data
-        filtered_new_data = processor.filter_polling_data(new_raw_data)
-        new_daily_averages = processor.calculate_daily_averages(filtered_new_data)
-
-        # Combine existing and new daily averages
-        if len(existing_daily_averages) == 0:
-            combined_daily_averages = new_daily_averages
-        elif len(new_daily_averages) == 0:
-            combined_daily_averages = existing_daily_averages
-        else:
-            combined_daily_averages = pd.concat(
-                [existing_daily_averages, new_daily_averages], ignore_index=True
-            )
-
-        # Remove duplicates and sort
-        combined_daily_averages = combined_daily_averages.drop_duplicates(
-            subset=["candidate_name", "end_date"], keep="last"
-        )
-        combined_daily_averages.sort_values(
-            ["candidate_name", "end_date"],
-            ascending=[True, True],
-            inplace=True,
-            ignore_index=True,
-        )
-
-        logger.info(
-            f"Combined daily averages: {len(combined_daily_averages)} total records"
-        )
-        logger.info(
-            f"Date range: {combined_daily_averages['end_date'].min()} to {combined_daily_averages['end_date'].max()}"
-        )
-
-        # Show what was actually added
-        if len(new_daily_averages) > 0:
-            new_dates = sorted(new_daily_averages["end_date"].unique())
-            logger.info(
-                f"✅ Successfully processed {len(new_dates)} new dates: {new_dates}"
-            )
-
-        return combined_daily_averages
+    def _extract_existing_daily_averages(self, comprehensive_path) -> pd.DataFrame:
+        """Legacy method - kept for compatibility."""
+        return self._extract_existing_daily_averages_optimized(comprehensive_path, [])

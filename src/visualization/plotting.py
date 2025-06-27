@@ -86,7 +86,9 @@ class ElectionPlotter:
                 else harris_data.iloc[:0]
             )
 
-            # Training period: Only show raw polling averages (solid lines)
+            # FIXED: Plot continuous daily polling averages that connect across training/holdout boundary
+
+            # Plot training period with thick lines
             if len(training_dates) > 0:
                 plt.plot(
                     training_dates,
@@ -103,25 +105,58 @@ class ElectionPlotter:
                     label="Harris daily polling average",
                 )
 
-            # Holdout period: Show raw data (thin lines) + model predictions (dashed lines) + baseline predictions (dotted lines)
+            # Plot holdout period continuing from training (thinner for visual distinction)
             if len(holdout_dates) > 0:
-                # Raw polling data during holdout (thin lines for context)
-                plt.plot(
-                    holdout_dates,
-                    trump_holdout_data["daily_average"],
-                    "r",
-                    alpha=0.6,
-                    linewidth=1,
-                    label="Trump holdout data",
-                )
-                plt.plot(
-                    holdout_dates,
-                    harris_holdout_data["daily_average"],
-                    "b",
-                    alpha=0.6,
-                    linewidth=1,
-                    label="Harris holdout data",
-                )
+                # Create continuous connection by including last training point
+                if len(training_dates) > 0:
+                    # Connect from last training point to holdout period
+                    trump_continuous_dates = [training_dates.iloc[-1]] + list(
+                        holdout_dates
+                    )
+                    harris_continuous_dates = [training_dates.iloc[-1]] + list(
+                        holdout_dates
+                    )
+                    trump_continuous_values = [
+                        trump_training_data["daily_average"].iloc[-1]
+                    ] + list(trump_holdout_data["daily_average"])
+                    harris_continuous_values = [
+                        harris_training_data["daily_average"].iloc[-1]
+                    ] + list(harris_holdout_data["daily_average"])
+
+                    plt.plot(
+                        trump_continuous_dates,
+                        trump_continuous_values,
+                        "r",
+                        alpha=0.6,
+                        linewidth=1,
+                        label="Trump holdout data",
+                    )
+                    plt.plot(
+                        harris_continuous_dates,
+                        harris_continuous_values,
+                        "b",
+                        alpha=0.6,
+                        linewidth=1,
+                        label="Harris holdout data",
+                    )
+                else:
+                    # No training data, just plot holdout
+                    plt.plot(
+                        holdout_dates,
+                        trump_holdout_data["daily_average"],
+                        "r",
+                        alpha=0.6,
+                        linewidth=1,
+                        label="Trump holdout data",
+                    )
+                    plt.plot(
+                        holdout_dates,
+                        harris_holdout_data["daily_average"],
+                        "b",
+                        alpha=0.6,
+                        linewidth=1,
+                        label="Harris holdout data",
+                    )
 
                 # Model predictions during holdout (dashed lines)
                 n_training = len(training_dates)

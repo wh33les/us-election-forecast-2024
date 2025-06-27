@@ -38,12 +38,11 @@ class DataConfig:
 
     # Data file paths
     raw_data_path: str = "data/president_polls.csv"
-    cleaned_data_path: str = "data/df_cleaned.csv"  # Will be saved in data/
-    previous_forecasts_path: str = "data/previous.csv"  # Will be saved in data/
+    cleaned_data_path: str = "data/df_cleaned.csv"
+    previous_forecasts_path: str = "data/previous.csv"
 
     # Output directories
     forecast_images_dir: str = "outputs/forecast_images"
-    # Note: previous_images_dir not used - final historical plot goes directly in outputs/
 
     # Data filtering criteria
     candidates: List[str] = None

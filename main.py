@@ -2,8 +2,8 @@
 """
 Rolling election forecast pipeline - matches original methodology.
 For each day Oct 23 - Nov 5, uses only data available up to that day.
-MODIFIED: Creates single comprehensive CSV instead of separate df_cleaned and previous files.
-UPDATED: Now includes holdout validation data in visualizations.
+Creates single comprehensive CSV instead of separate df_cleaned and previous files.
+Includes holdout validation data in visualizations.
 """
 
 import argparse
@@ -24,9 +24,8 @@ from src.visualization.plotting import ElectionPlotter
 def setup_logging(verbose=False, debug=False):
     """Setup logging with appropriate level for main.py and all src/ modules."""
     if debug:
-        # Set your modules to DEBUG, but others to INFO
-        root_level = logging.INFO  # Keep third-party libraries quieter
-        your_level = logging.DEBUG  # Your code gets debug info
+        root_level = logging.INFO
+        your_level = logging.DEBUG
         format_str = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
     elif verbose:
         root_level = logging.INFO
@@ -37,15 +36,10 @@ def setup_logging(verbose=False, debug=False):
         your_level = logging.WARNING
         format_str = "%(message)s"
 
-    # Configure the root logger (affects third-party libraries)
     logging.basicConfig(level=root_level, format=format_str, force=True)
 
-    # Set DEBUG level specifically for your modules when --debug is used
     if debug:
-        # Your main script
         logging.getLogger(__name__).setLevel(your_level)
-
-        # All your src/ modules
         logging.getLogger("src").setLevel(your_level)
         logging.getLogger("src.data").setLevel(your_level)
         logging.getLogger("src.models").setLevel(your_level)
@@ -106,13 +100,11 @@ def parse_flexible_date(date_string):
     if not date_string:
         return None
 
-    # Try multiple date formats
     formats_to_try = [
         "%Y-%m-%d",  # 2024-10-25
         "%m-%d-%Y",  # 10-25-2024
     ]
 
-    # For formats without year, handle them separately to avoid the warning
     year_agnostic_formats = [
         "%m-%d",  # 10-25 (will add 2024)
         "%m/%d",  # 10/25 (will add 2024)
@@ -124,7 +116,6 @@ def parse_flexible_date(date_string):
     for date_format in formats_to_try:
         try:
             parsed_date = datetime.strptime(date_string, date_format).date()
-            # Validate it's in the reasonable range for this election
             if date(2024, 10, 1) <= parsed_date <= date(2024, 11, 30):
                 return parsed_date
         except ValueError:
@@ -133,11 +124,8 @@ def parse_flexible_date(date_string):
     # Try year-agnostic formats and manually add 2024
     for date_format in year_agnostic_formats:
         try:
-            # Parse without year, using a non-leap year to avoid warnings
-            temp_date_str = (
-                f"2023-{date_string}" if date_format == "%m-%d" else date_string
-            )
             if date_format == "%m-%d":
+                temp_date_str = f"2023-{date_string}"
                 parsed_date = datetime.strptime(temp_date_str, "2023-%m-%d").date()
                 parsed_date = parsed_date.replace(year=2024)
             elif date_format == "%m/%d":
@@ -149,7 +137,6 @@ def parse_flexible_date(date_string):
                     f"{date_string} 2024", f"{date_format} %Y"
                 ).date()
 
-            # Validate it's in the reasonable range for this election
             if date(2024, 10, 1) <= parsed_date <= date(2024, 11, 30):
                 return parsed_date
 
@@ -163,16 +150,12 @@ def parse_flexible_date(date_string):
 
 def determine_forecast_dates(args):
     """Determine which dates to process based on command line arguments."""
-    # Default date range (final 2 weeks)
     default_start = date(2024, 10, 23)
     default_end = date(2024, 11, 5)
 
-    # Single date specified
     if args.date:
-        single_date = parse_flexible_date(args.date)
-        return [single_date]
+        return [parse_flexible_date(args.date)]
 
-    # Date range specified
     if args.start or args.end:
         start_date = parse_flexible_date(args.start) if args.start else default_start
         end_date = parse_flexible_date(args.end) if args.end else default_end
@@ -182,15 +165,11 @@ def determine_forecast_dates(args):
 
         return pd.date_range(start=start_date, end=end_date).date
 
-    # No date arguments - use default range
     return pd.date_range(start=default_start, end=default_end).date
 
 
 def load_or_create_comprehensive_dataset():
-    """
-    Load existing comprehensive dataset or create new one.
-    Replaces the old load_or_create_previous_forecasts function.
-    """
+    """Load existing comprehensive dataset or create new one."""
     logger = logging.getLogger(__name__)
     dataset_path = Path("data/election_forecast_2024_comprehensive.csv")
 
@@ -200,7 +179,6 @@ def load_or_create_comprehensive_dataset():
         df["date"] = pd.to_datetime(df["date"]).dt.date
         df["forecast_run_date"] = pd.to_datetime(df["forecast_run_date"]).dt.date
 
-        # Show existing forecast runs
         existing_runs = df["forecast_run_date"].unique()
         logger.info(
             f"Loaded {len(df)} existing records from {len(existing_runs)} forecast runs"
@@ -214,7 +192,7 @@ def load_or_create_comprehensive_dataset():
 
 
 def create_comprehensive_forecast_record(
-    training_data,  # Changed from available_data to be more accurate
+    training_data,
     all_dates,
     days_till_then,
     fitted_values,
@@ -224,15 +202,10 @@ def create_comprehensive_forecast_record(
     electoral_results,
     best_params,
 ):
-    """
-    Create comprehensive forecast record combining all data.
-    Now uses only training data (excludes validation holdout period).
-    """
+    """Create comprehensive forecast record combining all data."""
     logger = logging.getLogger(__name__)
     logger.debug(
-        f"Creating comprehensive record for {forecast_date}: "
-        f"training_data shape={training_data.shape}, "
-        f"forecast periods={len(days_till_then)}"
+        f"Creating comprehensive record for {forecast_date}: training_data shape={training_data.shape}, forecast periods={len(days_till_then)}"
     )
 
     comprehensive_records = []
@@ -292,13 +265,9 @@ def create_comprehensive_forecast_record(
                 "electoral_winner_model": None,
                 "electoral_votes_trump_model": None,
                 "electoral_votes_harris_model": None,
-                "trump_states_model": None,
-                "harris_states_model": None,
                 "electoral_winner_baseline": None,
                 "electoral_votes_trump_baseline": None,
                 "electoral_votes_harris_baseline": None,
-                "trump_states_baseline": None,
-                "harris_states_baseline": None,
             }
             comprehensive_records.append(record)
 
@@ -323,13 +292,9 @@ def create_comprehensive_forecast_record(
                 "electoral_winner_model": None,
                 "electoral_votes_trump_model": None,
                 "electoral_votes_harris_model": None,
-                "trump_states_model": None,
-                "harris_states_model": None,
                 "electoral_winner_baseline": None,
                 "electoral_votes_trump_baseline": None,
                 "electoral_votes_harris_baseline": None,
-                "trump_states_baseline": None,
-                "harris_states_baseline": None,
             }
             comprehensive_records.append(record)
 
@@ -430,10 +395,7 @@ def create_comprehensive_forecast_record(
         }
         comprehensive_records.append(record)
 
-    # Convert to DataFrame
     df_comprehensive = pd.DataFrame(comprehensive_records)
-
-    # Sort by date, then candidate, then record type
     df_comprehensive = df_comprehensive.sort_values(
         ["date", "candidate", "record_type"]
     ).reset_index(drop=True)
@@ -443,16 +405,13 @@ def create_comprehensive_forecast_record(
 
 
 def save_comprehensive_dataset(comprehensive_dataset):
-    """
-    Save the comprehensive dataset to CSV with metadata.
-    """
+    """Save the comprehensive dataset to CSV with metadata."""
     logger = logging.getLogger(__name__)
 
     if len(comprehensive_dataset) == 0:
         logger.warning("No records to save")
         return comprehensive_dataset
 
-    # Add metadata columns
     comprehensive_dataset = comprehensive_dataset.copy()
     comprehensive_dataset["actual_election_winner"] = "Donald Trump"
 
@@ -466,12 +425,10 @@ def save_comprehensive_dataset(comprehensive_dataset):
         axis=1,
     )
 
-    # Sort by date, candidate, record type
     comprehensive_dataset = comprehensive_dataset.sort_values(
         ["date", "candidate", "record_type"]
     ).reset_index(drop=True)
 
-    # Save comprehensive dataset
     output_path = "data/election_forecast_2024_comprehensive.csv"
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     comprehensive_dataset.to_csv(output_path, index=False)
@@ -490,13 +447,9 @@ def save_comprehensive_dataset(comprehensive_dataset):
 
 
 def create_historical_data_for_plotting(comprehensive_dataset, forecast_date):
-    """
-    Create historical forecast data in the format expected by plotting functions.
-    This replaces the old previous.csv format.
-    """
+    """Create historical forecast data in the format expected by plotting functions."""
     logger = logging.getLogger(__name__)
 
-    # Get all election day forecasts up to the current forecast date
     election_day = date(2024, 11, 5)
     historical_forecasts = comprehensive_dataset[
         (comprehensive_dataset["date"] == election_day)
@@ -506,12 +459,9 @@ def create_historical_data_for_plotting(comprehensive_dataset, forecast_date):
 
     if len(historical_forecasts) == 0:
         logger.debug("No historical forecasts available for plotting")
-        # Return empty dataframe with expected columns
         return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
 
-    # Convert to the format expected by plotting functions
     historical_data = []
-
     for _, row in historical_forecasts.iterrows():
         record = {
             "date": row["forecast_run_date"],  # The date the forecast was made
@@ -529,11 +479,10 @@ def create_historical_data_for_plotting(comprehensive_dataset, forecast_date):
 
 def main():
     """Run rolling daily election forecasts for the final 2 weeks."""
-    # Parse arguments and setup logging
     args = parse_arguments()
     logger = setup_logging(verbose=args.verbose, debug=args.debug)
 
-    # Log startup information based on mode
+    # Log startup information
     if args.verbose:
         logger.info("🚀 ROLLING ELECTION FORECAST 2024 PIPELINE")
         logger.info("=" * 60)
@@ -604,7 +553,7 @@ def main():
 
     # Create output directories
     Path(data_config.forecast_images_dir).mkdir(parents=True, exist_ok=True)
-    Path("outputs").mkdir(parents=True, exist_ok=True)  # For daily historical plots
+    Path("outputs").mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
 
     # Load and process ALL raw data once
@@ -615,7 +564,7 @@ def main():
     logger.info("=== LOADING ALL RAW DATA ===")
     raw_data = collector.load_raw_data()
 
-    # Filter to Biden drop-out date and later (from your original code)
+    # Filter to Biden drop-out date and later
     biden_out = datetime(2024, 7, 21).date()
     raw_data = raw_data[raw_data["end_date"] >= biden_out]
 
@@ -645,7 +594,6 @@ def main():
 
     # Initialize comprehensive dataset
     comprehensive_dataset = load_or_create_comprehensive_dataset()
-
     election_day = datetime(2024, 11, 5).date()
 
     if args.verbose:
@@ -698,11 +646,7 @@ def main():
             continue
 
         # Proper time series train/holdout split
-        # Train-train: up to 7 days before forecast date
-        # Holdout: last 7 days before forecast date
         test_size = model_config.test_size  # Should be 7 from config
-
-        # Calculate train-train cutoff date (7 days before forecast date)
         train_cutoff_date = forecast_date - timedelta(days=test_size)
 
         if args.debug:
@@ -756,13 +700,11 @@ def main():
             logger.info(f"Forecasting {days_to_election} days until election")
 
         try:
-            # Train models using only TRAINING data (not validation data)
+            # Train models using only TRAINING data
             if args.verbose:
                 logger.info("   🤖 Training Holt exponential smoothing models...")
 
             forecaster = HoltElectionForecaster(model_config)
-
-            # For cross-validation, we need to create x_train based on training data only
             x_train = pd.Series(range(len(trump_train)))
 
             # Grid search and model fitting using ONLY training data
@@ -774,7 +716,7 @@ def main():
                 logger.info("Running hyperparameter optimization...")
 
             best_params = forecaster.grid_search_hyperparameters(
-                trump_train, harris_train, x_train  # Use training data only
+                trump_train, harris_train, x_train
             )
 
             if args.debug:
@@ -785,17 +727,13 @@ def main():
             else:
                 logger.info("Fitting final models...")
 
-            fitted_models = forecaster.fit_final_models(
-                trump_train, harris_train
-            )  # Use training data only
+            fitted_models = forecaster.fit_final_models(trump_train, harris_train)
 
             # Generate predictions for holdout period first (validation)
-            # Holdout period: from train_cutoff_date to forecast_date-1
             holdout_dates = pd.date_range(
                 start=train_cutoff_date, end=forecast_date, inclusive="left"
             ).date
             holdout_horizon = len(holdout_dates)
-
             days_till_then = pd.date_range(start=forecast_date, end=election_day).date
 
             # Generate forecasts for the entire period: holdout + forecast
@@ -816,34 +754,10 @@ def main():
 
             all_predictions = forecaster.forecast(total_horizon)
 
-            # Split predictions into holdout and forecast periods
-            if holdout_horizon > 0:
-                holdout_predictions = {
-                    "trump": all_predictions["trump"][:holdout_horizon],
-                    "harris": all_predictions["harris"][:holdout_horizon],
-                }
-                forecasts = {
-                    "trump": all_predictions["trump"][holdout_horizon:],
-                    "harris": all_predictions["harris"][holdout_horizon:],
-                }
-            else:
-                holdout_predictions = {"trump": [], "harris": []}
-                forecasts = all_predictions
-
-            # Replace the section around lines 880-920 in main.py with this:
-
-            all_predictions = forecaster.forecast(total_horizon)
-
-            # ============================================================================
-            # FIXED: Generate ONE continuous baseline for the entire period (holdout + future)
-            # This ensures baseline appears as straight lines in the plot
-            # ============================================================================
-
+            # Generate ONE continuous baseline for the entire period (holdout + future)
             logger.info("Generating continuous baseline forecasts...")
             all_baselines = forecaster.generate_baseline_forecasts(
-                trump_train,
-                harris_train,
-                total_horizon,  # Entire period at once for continuity
+                trump_train, harris_train, total_horizon
             )
 
             # Split predictions into holdout and forecast periods
@@ -856,8 +770,6 @@ def main():
                     "trump": all_predictions["trump"][holdout_horizon:],
                     "harris": all_predictions["harris"][holdout_horizon:],
                 }
-
-                # Split baselines into holdout and forecast periods (from same continuous line)
                 holdout_baselines = {
                     "trump": all_baselines["trump"][:holdout_horizon],
                     "harris": all_baselines["harris"][:holdout_horizon],
@@ -870,47 +782,7 @@ def main():
                 holdout_predictions = {"trump": [], "harris": []}
                 holdout_baselines = None
                 forecasts = all_predictions
-                baselines = all_baselines  # When no holdout, baselines = all_baselines
-
-            # Debug logging to verify baseline continuity
-            if args.debug:
-                logger.debug(f"Total baseline horizon: {total_horizon}")
-                logger.debug(f"Holdout horizon: {holdout_horizon}")
-                logger.debug(f"Future horizon: {len(days_till_then)}")
-
-                if holdout_horizon > 0:
-                    logger.debug(
-                        f"Trump holdout baseline: {holdout_baselines['trump']}"
-                    )
-                    logger.debug(f"Trump future baseline: {baselines['trump']}")
-
-                    # Verify baselines form straight lines
-                    trump_holdout_diffs = np.diff(holdout_baselines["trump"])
-                    trump_future_diffs = np.diff(baselines["trump"])
-
-                    logger.debug(
-                        f"Trump holdout baseline differences: {trump_holdout_diffs}"
-                    )
-                    logger.debug(
-                        f"Trump future baseline differences: {trump_future_diffs}"
-                    )
-
-                    # Check if differences are constant (indicating straight line)
-                    if len(trump_holdout_diffs) > 1:
-                        is_straight_holdout = np.allclose(
-                            trump_holdout_diffs, trump_holdout_diffs[0], atol=1e-10
-                        )
-                        logger.debug(
-                            f"Trump holdout baseline is straight line: {is_straight_holdout}"
-                        )
-
-                    if len(trump_future_diffs) > 1:
-                        is_straight_future = np.allclose(
-                            trump_future_diffs, trump_future_diffs[0], atol=1e-10
-                        )
-                        logger.debug(
-                            f"Trump future baseline is straight line: {is_straight_future}"
-                        )
+                baselines = all_baselines
 
             fitted_values = forecaster.get_fitted_values()
 
@@ -932,10 +804,6 @@ def main():
                     f"Final forecasts: Trump={forecasts['trump'][-1]:.2f}%, Harris={forecasts['harris'][-1]:.2f}%"
                 )
 
-            # ========================================================================
-            # OPTION 3: CREATE COMPLETE DATASETS INCLUDING HOLDOUT DATA FOR PLOTTING
-            # ========================================================================
-
             # Create complete historical datasets (training + holdout)
             trump_complete = pd.concat(
                 [trump_train, trump_holdout], ignore_index=True
@@ -944,7 +812,7 @@ def main():
                 [harris_train, harris_holdout], ignore_index=True
             ).sort_values("end_date")
 
-            # Remove any potential duplicates by date (keep first occurrence)
+            # Remove any potential duplicates by date
             trump_complete = trump_complete.drop_duplicates(
                 subset=["end_date"], keep="first"
             ).reset_index(drop=True)
@@ -952,8 +820,7 @@ def main():
                 subset=["end_date"], keep="first"
             ).reset_index(drop=True)
 
-            # Create fitted values ONLY for the length of the actual datasets we're passing
-            # The plotting function will extract data from the datasets, so fitted values must match
+            # Create fitted values for the complete datasets
             complete_fitted_values = {
                 "trump": list(fitted_values["trump"])
                 + list(holdout_predictions["trump"]),
@@ -965,25 +832,19 @@ def main():
             trump_fitted_length = len(trump_complete)
             harris_fitted_length = len(harris_complete)
 
-            # Truncate fitted values to match the dataset lengths
             complete_fitted_values = {
                 "trump": complete_fitted_values["trump"][:trump_fitted_length],
                 "harris": complete_fitted_values["harris"][:harris_fitted_length],
             }
 
-            # Create forecast data for future predictions only
             future_forecasts = forecasts
             future_baselines = baselines
-
-            # Historical dates extracted from the complete datasets
             historical_dates = sorted(
                 set(
                     trump_complete["end_date"].tolist()
                     + harris_complete["end_date"].tolist()
                 )
             )
-
-            # Future forecast dates (for the dotted prediction lines going forward)
             future_forecast_dates = list(days_till_then)
 
             if args.debug:
@@ -997,30 +858,9 @@ def main():
                 logger.debug(
                     f"Future forecasts: Trump={len(future_forecasts['trump'])}, Harris={len(future_forecasts['harris'])}"
                 )
-                logger.debug(
-                    f"Future baselines: Trump={len(future_baselines['trump'])}, Harris={len(future_baselines['harris'])}"
-                )
-                logger.debug(
-                    f"Training period: {trump_train['end_date'].min()} to {trump_train['end_date'].max()}"
-                )
-                if len(trump_holdout) > 0:
-                    logger.debug(
-                        f"Holdout period: {trump_holdout['end_date'].min()} to {trump_holdout['end_date'].max()}"
-                    )
-                if len(days_till_then) > 0:
-                    logger.debug(
-                        f"Forecast period: {days_till_then[0]} to {days_till_then[-1]}"
-                    )
-                logger.debug(
-                    f"Future forecast dates: {len(future_forecast_dates)} dates"
-                )
-                logger.debug(
-                    f"Data alignment check: dates={len(historical_dates)}, trump_data={len(trump_complete)}, fitted_trump={len(complete_fitted_values['trump'])}"
-                )
 
             # Add holdout performance logging
             if len(holdout_predictions["trump"]) > 0 and len(trump_holdout) > 0:
-                # Calculate holdout performance
                 trump_holdout_actual = trump_holdout["daily_average"].mean()
                 harris_holdout_actual = harris_holdout["daily_average"].mean()
                 trump_holdout_pred = np.mean(holdout_predictions["trump"])
@@ -1042,16 +882,12 @@ def main():
                         f"Holdout validation: Trump error={trump_holdout_error:.2f}%, Harris error={harris_holdout_error:.2f}%"
                     )
 
-            # Test dates = forecast period (from forecast_date to election_day)
-            test_dates = days_till_then
-
             # Only calculate electoral outcomes for Election Day forecasts
             election_day_date = date(2024, 11, 5)
             if forecast_date == election_day_date:
                 # Create simple data for electoral college calculation
                 electoral_calc_data = []
                 if len(forecasts["trump"]) > 0 and len(forecasts["harris"]) > 0:
-                    # Get election day predictions (last forecast)
                     trump_final = forecasts["trump"][-1]
                     harris_final = forecasts["harris"][-1]
                     trump_baseline = baselines["trump"][-1]
@@ -1079,7 +915,6 @@ def main():
                 electoral_calculation_data = pd.DataFrame(electoral_calc_data)
 
                 if len(electoral_calculation_data) > 0:
-                    # Calculate electoral college outcomes
                     if args.verbose:
                         logger.info(
                             "   🗳️  Calculating electoral college outcomes for Election Day..."
@@ -1090,8 +925,6 @@ def main():
                     electoral_results = calculator.calculate_all_outcomes(
                         electoral_calculation_data
                     )
-
-                    # Extract final predictions for logging
                     trump_pred_pct = electoral_results["model"]["trump_vote_pct"]
                     harris_pred_pct = electoral_results["model"]["harris_vote_pct"]
 
@@ -1184,24 +1017,22 @@ def main():
                     },
                 }
 
-            # Now create comprehensive forecast record with all results
-            # Use training data (what was actually used for model fitting)
+            # Create comprehensive forecast record
             training_data = pd.concat([trump_train, harris_train], ignore_index=True)
             daily_forecast_record = create_comprehensive_forecast_record(
-                training_data,  # Use only training data, not all available data
-                historical_dates,  # Historical dates that align with polling data
-                days_till_then,  # Future forecast dates only (for record creation)
-                fitted_values,  # Only fitted values from training (for record creation)
-                forecasts,  # Future forecasts only (for record creation)
-                baselines,  # Future baselines only (for record creation)
+                training_data,
+                historical_dates,
+                days_till_then,
+                fitted_values,
+                forecasts,
+                baselines,
                 forecast_date,
                 electoral_results,
                 best_params,
             )
 
-            # Update comprehensive dataset - replace any existing records for this forecast date
+            # Update comprehensive dataset
             if len(comprehensive_dataset) > 0:
-                # Remove any existing records for this forecast run date
                 existing_records = len(
                     comprehensive_dataset[
                         comprehensive_dataset["forecast_run_date"] == forecast_date
@@ -1216,7 +1047,6 @@ def main():
                         comprehensive_dataset["forecast_run_date"] != forecast_date
                     ].copy()
 
-            # Add new records for this forecast date
             comprehensive_dataset = pd.concat(
                 [comprehensive_dataset, daily_forecast_record], ignore_index=True
             )
@@ -1229,22 +1059,19 @@ def main():
 
             comprehensive_dataset = save_comprehensive_dataset(comprehensive_dataset)
 
-            # Generate visualizations (both images like your original)
+            # Generate visualizations
             if args.verbose:
                 logger.info("   📈 Creating forecast visualization...")
             else:
                 logger.info("Creating forecast visualization...")
 
-            # 1. Main forecast plot (forecast_images/)
+            # 1. Main forecast plot
             forecast_plot_path = (
                 Path(data_config.forecast_images_dir)
                 / f"{forecast_date.strftime('%d%b')}.png"
             )
-
-            # Ensure directory exists
             forecast_plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Explicitly remove existing file to force overwrite
             if forecast_plot_path.exists():
                 if args.verbose:
                     logger.info(
@@ -1255,85 +1082,26 @@ def main():
                         f"Replacing existing forecast plot: {forecast_plot_path}"
                     )
                 try:
-                    forecast_plot_path.unlink()  # Remove the existing file
+                    forecast_plot_path.unlink()
                     if args.debug:
                         logger.debug(f"Deleted existing file: {forecast_plot_path}")
                 except Exception as e:
                     logger.warning(f"Could not delete existing forecast plot: {e}")
 
             try:
-                # ========================================================
-                # PLOTTING WITH DETAILED DEBUGGING
-                # ========================================================
-
-                if args.debug:
-                    logger.debug(f"DETAILED PLOTTING DEBUG:")
-                    logger.debug(f"  historical_dates length: {len(historical_dates)}")
-                    logger.debug(
-                        f"  historical_dates: {historical_dates[:5]}...{historical_dates[-5:]}"
-                    )
-                    logger.debug(f"  trump_complete shape: {trump_complete.shape}")
-                    logger.debug(f"  harris_complete shape: {harris_complete.shape}")
-                    logger.debug(
-                        f"  trump_complete unique dates: {trump_complete['end_date'].nunique()}"
-                    )
-                    logger.debug(
-                        f"  harris_complete unique dates: {harris_complete['end_date'].nunique()}"
-                    )
-
-                    # Check for duplicates in the datasets
-                    trump_duplicates = trump_complete["end_date"].duplicated().sum()
-                    harris_duplicates = harris_complete["end_date"].duplicated().sum()
-                    logger.debug(f"  trump_complete duplicates: {trump_duplicates}")
-                    logger.debug(f"  harris_complete duplicates: {harris_duplicates}")
-
-                    # Show what the plotting function will actually extract
-                    # This mimics what happens inside the plotting function
-                    y_trump_obs = trump_complete["daily_average"].tolist()
-                    y_harris_obs = harris_complete["daily_average"].tolist()
-                    logger.debug(f"  y_trump_obs length: {len(y_trump_obs)}")
-                    logger.debug(f"  y_harris_obs length: {len(y_harris_obs)}")
-
-                    # Check for any NaN values that might cause issues
-                    trump_nans = trump_complete["daily_average"].isna().sum()
-                    harris_nans = harris_complete["daily_average"].isna().sum()
-                    logger.debug(f"  trump NaN values: {trump_nans}")
-                    logger.debug(f"  harris NaN values: {harris_nans}")
-
-                    # Show date ranges
-                    logger.debug(
-                        f"  trump_complete date range: {trump_complete['end_date'].min()} to {trump_complete['end_date'].max()}"
-                    )
-                    logger.debug(
-                        f"  harris_complete date range: {harris_complete['end_date'].min()} to {harris_complete['end_date'].max()}"
-                    )
-
-                    # Expected alignment check
-                    logger.debug(f"  ALIGNMENT CHECK:")
-                    logger.debug(f"    len(historical_dates) = {len(historical_dates)}")
-                    logger.debug(f"    len(y_trump_obs) = {len(y_trump_obs)}")
-                    logger.debug(f"    len(y_harris_obs) = {len(y_harris_obs)}")
-
-                    if len(historical_dates) != len(y_trump_obs):
-                        logger.debug(
-                            f"  ❌ MISMATCH DETECTED: dates({len(historical_dates)}) != trump_data({len(y_trump_obs)})"
-                        )
-                    else:
-                        logger.debug(f"  ✅ Alignment looks correct")
-
                 plotter.plot_main_forecast(
-                    historical_dates,  # dates array (should match data lengths)
-                    future_forecast_dates,  # Future forecast dates only
-                    trump_complete,  # Complete Trump data (training + holdout)
-                    harris_complete,  # Complete Harris data (training + holdout)
-                    future_forecasts,  # Future forecasts only
-                    future_baselines,  # Future baselines only
-                    complete_fitted_values,  # Fitted values for complete period
+                    historical_dates,
+                    future_forecast_dates,
+                    trump_complete,
+                    harris_complete,
+                    future_forecasts,
+                    future_baselines,
+                    complete_fitted_values,
                     best_params,
-                    future_forecast_dates,  # forecast_period_dates (future only)
+                    future_forecast_dates,
                     forecast_date=forecast_date,
-                    training_end_date=train_cutoff_date,  # Training end date
-                    holdout_baselines=holdout_baselines,  # Baseline predictions for holdout period
+                    training_end_date=train_cutoff_date,
+                    holdout_baselines=holdout_baselines,
                     save_path=forecast_plot_path,
                 )
 
@@ -1345,26 +1113,21 @@ def main():
                 if args.debug:
                     logger.exception("Forecast plotting error details:")
 
-            # 2. Historical forecasts plot (generate for each day)
+            # 2. Historical forecasts plot
             if args.verbose:
                 logger.info("   📊 Creating historical performance visualization...")
             else:
                 logger.info("Creating historical performance visualization...")
 
-            # Create historical data from comprehensive dataset
             historical_data = create_historical_data_for_plotting(
                 comprehensive_dataset, forecast_date
             )
-
             historical_plot_path = (
                 Path("outputs/previous_forecasts")
                 / f"historical_{forecast_date.strftime('%m%d')}.png"
             )
-
-            # Ensure directory exists
             historical_plot_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Explicitly remove existing file to force overwrite
             if historical_plot_path.exists():
                 if args.verbose:
                     logger.info(
@@ -1375,7 +1138,7 @@ def main():
                         f"Replacing existing historical plot: {historical_plot_path}"
                     )
                 try:
-                    historical_plot_path.unlink()  # Remove the existing file
+                    historical_plot_path.unlink()
                     if args.debug:
                         logger.debug(f"Deleted existing file: {historical_plot_path}")
                 except Exception as e:
@@ -1403,15 +1166,13 @@ def main():
                     f"   📊 Model prediction: Trump {trump_pred_pct:.1f}%, Harris {harris_pred_pct:.1f}%"
                 )
                 if forecast_date == election_day_date:
-                    # Calculate swing state electoral votes for each candidate
                     trump_swing_evs = max(
                         0, electoral_results["model"]["trump_electoral_votes"] - 219
-                    )  # Trump safe states
+                    )
                     harris_swing_evs = max(
                         0, electoral_results["model"]["harris_electoral_votes"] - 226
-                    )  # Harris safe states
+                    )
 
-                    # State name mapping for better readability
                     state_names = {
                         "AZ": "Arizona (11)",
                         "GA": "Georgia (16)",
@@ -1474,15 +1235,13 @@ def main():
                     f"   Model prediction: Trump {trump_pred_pct:.1f}%, Harris {harris_pred_pct:.1f}%"
                 )
                 if forecast_date == election_day_date:
-                    # Calculate swing state electoral votes for each candidate
                     trump_swing_evs = max(
                         0, electoral_results["model"]["trump_electoral_votes"] - 219
-                    )  # Trump safe states
+                    )
                     harris_swing_evs = max(
                         0, electoral_results["model"]["harris_electoral_votes"] - 226
-                    )  # Harris safe states
+                    )
 
-                    # State name mapping for better readability
                     state_names = {
                         "AZ": "Arizona (11)",
                         "GA": "Georgia (16)",

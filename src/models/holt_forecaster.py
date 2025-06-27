@@ -23,9 +23,7 @@ class HoltElectionForecaster:
     def mase(
         self, y_train: np.ndarray, y_test: np.ndarray, y_preds: np.ndarray
     ) -> float:
-        """
-        Calculate Mean Absolute Scaled Error.
-        From your original forecast.py MASE function.
+        """Calculate Mean Absolute Scaled Error.
 
         If MASE > 1: forecast performs worse than naive forecast
         If MASE < 1: forecast performs better than naive forecast
@@ -49,10 +47,7 @@ class HoltElectionForecaster:
     def grid_search_hyperparameters(
         self, trump_data: pd.DataFrame, harris_data: pd.DataFrame, x_train: pd.Series
     ) -> Dict[str, Dict[str, float]]:
-        """
-        Perform grid search for optimal Holt smoothing parameters.
-        From your original forecast.py grid search logic.
-        """
+        """Perform grid search for optimal Holt smoothing parameters."""
         logger.info("Starting hyperparameter grid search...")
 
         grid_numbers = self.config.grid_numbers
@@ -168,10 +163,7 @@ class HoltElectionForecaster:
     def fit_final_models(
         self, trump_data: pd.DataFrame, harris_data: pd.DataFrame
     ) -> Dict[str, Holt]:
-        """
-        Fit final Holt models using best parameters.
-        From your original forecast.py final model fitting.
-        """
+        """Fit final Holt models using best parameters."""
         logger.info("Fitting final Holt models...")
 
         if not self.best_params:
@@ -197,9 +189,7 @@ class HoltElectionForecaster:
         return self.fitted_models
 
     def forecast(self, horizon: int) -> Dict[str, np.ndarray]:
-        """
-        Generate forecasts for specified horizon.
-        """
+        """Generate forecasts for specified horizon."""
         if not self.fitted_models:
             raise ValueError("Must fit models before forecasting")
 
@@ -216,8 +206,7 @@ class HoltElectionForecaster:
     def generate_baseline_forecasts(
         self, trump_data: pd.DataFrame, harris_data: pd.DataFrame, horizon: int
     ) -> Dict[str, np.ndarray]:
-        """
-        Generate linear drift baseline forecasts (straight lines).
+        """Generate linear drift baseline forecasts (straight lines).
 
         This calculates a simple linear trend from the training data and
         extrapolates it forward as a straight line.
@@ -246,9 +235,7 @@ class HoltElectionForecaster:
         return baselines
 
     def get_fitted_values(self) -> Dict[str, np.ndarray]:
-        """
-        Get fitted values from trained models.
-        """
+        """Get fitted values from trained models."""
         if not self.fitted_models:
             raise ValueError("Must fit models before getting fitted values")
 

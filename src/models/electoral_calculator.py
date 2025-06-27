@@ -2,7 +2,6 @@
 """Electoral college calculation for election forecasting."""
 
 import pandas as pd
-import numpy as np
 import logging
 from typing import Dict
 
@@ -16,7 +15,7 @@ class ElectoralCollegeCalculator:
         """Initialize with model configuration."""
         self.config = config
 
-        # Electoral vote mapping from your swing_states.py
+        # Electoral vote mapping
         self.swing_states_map = {
             "AZ": 11,
             "GA": 16,
@@ -35,10 +34,7 @@ class ElectoralCollegeCalculator:
     def extract_final_predictions(
         self, df_cleaned: pd.DataFrame
     ) -> Dict[str, Dict[str, float]]:
-        """
-        Extract final prediction percentages from cleaned dataframe.
-        From your swing_states.py extraction logic.
-        """
+        """Extract final prediction percentages from cleaned dataframe."""
         logger.info("Extracting final predictions from dataframe...")
 
         try:
@@ -95,16 +91,12 @@ class ElectoralCollegeCalculator:
     def calculate_swing_state_allocation(
         self, trump_share: float, harris_share: float
     ) -> Dict[str, any]:
-        """
-        Calculate swing state allocation based on vote shares.
-        From your swing_states.py tally function.
-        """
+        """Calculate swing state allocation based on vote shares."""
         logger.info(
             f"Calculating swing state allocation: Trump {trump_share:.1%}, Harris {harris_share:.1%}"
         )
 
         trump_swing_votes = round(trump_share * self.total_swing_votes)
-        harris_swing_votes = round(harris_share * self.total_swing_votes)
 
         trump_total = self.trump_safe_votes
         harris_total = self.harris_safe_votes
@@ -114,7 +106,6 @@ class ElectoralCollegeCalculator:
         remaining_trump_votes = trump_swing_votes
 
         # Allocate swing states based on vote share
-        # States are processed in the order they appear in the dictionary
         for state_code, electoral_votes in self.swing_states_map.items():
             if electoral_votes < remaining_trump_votes:
                 # Trump gets this state
@@ -144,7 +135,7 @@ class ElectoralCollegeCalculator:
             "trump_electoral_votes": trump_total,
             "harris_electoral_votes": harris_total,
             "trump_swing_votes": trump_swing_votes,
-            "harris_swing_votes": harris_swing_votes,
+            "harris_swing_votes": round(harris_share * self.total_swing_votes),
             "winner": winner,
         }
 
@@ -157,9 +148,7 @@ class ElectoralCollegeCalculator:
         return result
 
     def calculate_all_outcomes(self, df_cleaned: pd.DataFrame) -> Dict[str, Dict]:
-        """
-        Calculate electoral outcomes for both model and baseline predictions.
-        """
+        """Calculate electoral outcomes for both model and baseline predictions."""
         logger.info("Calculating all electoral college outcomes...")
 
         # Extract predictions

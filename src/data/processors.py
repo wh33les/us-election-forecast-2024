@@ -2,7 +2,6 @@
 """Data processing functions for election forecasting."""
 
 import pandas as pd
-import numpy as np
 import logging
 from typing import Tuple
 
@@ -17,10 +16,7 @@ class PollingDataProcessor:
         self.config = config
 
     def filter_polling_data(self, raw_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filter polling data based on configuration criteria.
-        From your original forecast.py filtering logic.
-        """
+        """Filter polling data based on configuration criteria."""
         logger.info("Filtering polling data...")
 
         # Extract relevant columns and candidates
@@ -53,10 +49,7 @@ class PollingDataProcessor:
         return df
 
     def calculate_daily_averages(self, filtered_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Calculate daily averages for each candidate.
-        From your original forecast.py groupby logic.
-        """
+        """Calculate daily averages for each candidate."""
         logger.info("Calculating daily averages...")
 
         # Group by date and candidate to get daily averages
@@ -90,12 +83,8 @@ class PollingDataProcessor:
     def split_by_candidate(
         self, df_cleaned: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Split cleaned data by candidate for modeling.
-        From your original forecast.py candidate extraction.
-        """
+        """Split cleaned data by candidate for modeling."""
         trump = df_cleaned[(df_cleaned["candidate_name"] == "Donald Trump")].copy()
-
         harris = df_cleaned[(df_cleaned["candidate_name"] == "Kamala Harris")].copy()
 
         logger.info(

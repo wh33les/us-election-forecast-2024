@@ -22,36 +22,26 @@ class ElectionPlotter:
 
         # Set plotting style
         sns.set_style("whitegrid")
-
         # Enable LaTeX rendering for mathematical expressions
         plt.rcParams["text.usetex"] = False  # Use mathtext instead of full LaTeX
 
     def plot_main_forecast(
         self,
-        historical_dates: pd.Series,  # Historical dates (training + holdout)
-        test_dates: pd.Series,  # Future forecast dates
-        trump_data: pd.DataFrame,  # Trump data (training + holdout)
-        harris_data: pd.DataFrame,  # Harris data (training + holdout)
-        forecasts: Dict[str, np.ndarray],  # Future forecasts
-        baselines: Dict[str, np.ndarray],  # Future baselines
-        fitted_values: Dict[
-            str, np.ndarray
-        ],  # Combined: training fitted + holdout predictions
+        historical_dates: pd.Series,
+        test_dates: pd.Series,
+        trump_data: pd.DataFrame,
+        harris_data: pd.DataFrame,
+        forecasts: Dict[str, np.ndarray],
+        baselines: Dict[str, np.ndarray],
+        fitted_values: Dict[str, np.ndarray],
         best_params: Dict[str, Dict[str, float]],
         forecast_period_dates: pd.Series,
         forecast_date: Union[datetime, date] = None,
-        training_end_date: Union[datetime, date] = None,  # When training period ends
-        holdout_baselines: Optional[
-            Dict[str, np.ndarray]
-        ] = None,  # NEW: Baseline predictions for holdout period
+        training_end_date: Union[datetime, date] = None,
+        holdout_baselines: Optional[Dict[str, np.ndarray]] = None,
         save_path: Optional[Path] = None,
     ):
-        """
-        Create main forecast plot showing polling data and predictions.
-        Training period: only raw polling data (solid lines)
-        Holdout period: raw data + model predictions (dashed lines) + baseline predictions (dotted lines)
-        Future period: model forecasts (dashed lines)
-        """
+        """Create main forecast plot showing polling data and predictions."""
         logger.info("Creating main forecast plot...")
 
         # Create figure
@@ -59,7 +49,6 @@ class ElectionPlotter:
 
         # Split data into training and holdout periods
         if training_end_date:
-            # Find the split point in historical_dates
             training_mask = pd.Series(historical_dates) < training_end_date
             training_dates = pd.Series(historical_dates)[training_mask]
             holdout_dates = pd.Series(historical_dates)[~training_mask]
@@ -86,8 +75,6 @@ class ElectionPlotter:
                 else harris_data.iloc[:0]
             )
 
-            # FIXED: Plot continuous daily polling averages that connect across training/holdout boundary
-
             # Plot training period with thick lines
             if len(training_dates) > 0:
                 plt.plot(
@@ -105,11 +92,10 @@ class ElectionPlotter:
                     label="Harris daily polling average",
                 )
 
-            # Plot holdout period continuing from training (thinner for visual distinction)
+            # Plot holdout period continuing from training
             if len(holdout_dates) > 0:
                 # Create continuous connection by including last training point
                 if len(training_dates) > 0:
-                    # Connect from last training point to holdout period
                     trump_continuous_dates = [training_dates.iloc[-1]] + list(
                         holdout_dates
                     )
@@ -223,179 +209,26 @@ class ElectionPlotter:
                 label="Harris daily polling average",
             )
 
-        # Plot future forecasts (connected to holdout predictions for continuity)
+        # Plot future forecasts
         if len(test_dates) > 0:
-            # Create continuous prediction lines by combining holdout and future forecasts
-            if training_end_date and len(holdout_dates) > 0:
-                # Get the last holdout prediction values to ensure continuity
-                n_training = len(training_dates)
-                if len(fitted_values["trump"]) > n_training:
-                    trump_holdout_preds = fitted_values["trump"][n_training:]
-                    harris_holdout_preds = fitted_values["harris"][n_training:]
+            self._plot_connected_forecasts(
+                test_dates,
+                forecasts,
+                holdout_dates if training_end_date else None,
+                fitted_values,
+                training_end_date,
+                "future",
+            )
 
-                    # Create continuous dates and predictions (last holdout point + future forecasts)
-                    if len(trump_holdout_preds) > 0 and len(forecasts["trump"]) > 0:
-                        continuous_trump_dates = [holdout_dates.iloc[-1]] + list(
-                            test_dates
-                        )
-                        continuous_harris_dates = [holdout_dates.iloc[-1]] + list(
-                            test_dates
-                        )
-                        continuous_trump_preds = [trump_holdout_preds[-1]] + list(
-                            forecasts["trump"]
-                        )
-                        continuous_harris_preds = [harris_holdout_preds[-1]] + list(
-                            forecasts["harris"]
-                        )
-
-                        plt.plot(
-                            continuous_trump_dates,
-                            continuous_trump_preds,
-                            "r--",
-                            linewidth=2,
-                            alpha=0.8,
-                            label="Trump future forecast",
-                        )
-                        plt.plot(
-                            continuous_harris_dates,
-                            continuous_harris_preds,
-                            "b--",
-                            linewidth=2,
-                            alpha=0.8,
-                            label="Harris future forecast",
-                        )
-                    else:
-                        # Fallback: plot future forecasts without connection
-                        plt.plot(
-                            test_dates,
-                            forecasts["trump"],
-                            "r--",
-                            linewidth=2,
-                            alpha=0.8,
-                            label="Trump future forecast",
-                        )
-                        plt.plot(
-                            test_dates,
-                            forecasts["harris"],
-                            "b--",
-                            linewidth=2,
-                            alpha=0.8,
-                            label="Harris future forecast",
-                        )
-                else:
-                    # Fallback: plot future forecasts without connection
-                    plt.plot(
-                        test_dates,
-                        forecasts["trump"],
-                        "r--",
-                        linewidth=2,
-                        alpha=0.8,
-                        label="Trump future forecast",
-                    )
-                    plt.plot(
-                        test_dates,
-                        forecasts["harris"],
-                        "b--",
-                        linewidth=2,
-                        alpha=0.8,
-                        label="Harris future forecast",
-                    )
-            else:
-                # No holdout period: plot future forecasts normally
-                plt.plot(
-                    test_dates,
-                    forecasts["trump"],
-                    "r--",
-                    linewidth=2,
-                    alpha=0.8,
-                    label="Trump future forecast",
-                )
-                plt.plot(
-                    test_dates,
-                    forecasts["harris"],
-                    "b--",
-                    linewidth=2,
-                    alpha=0.8,
-                    label="Harris future forecast",
-                )
-
-        # Plot baseline forecasts (connected to holdout baselines for continuity)
+        # Plot baseline forecasts
         if len(test_dates) > 0:
-            if (
-                training_end_date
-                and len(holdout_dates) > 0
-                and holdout_baselines is not None
-            ):
-                trump_holdout_baselines = holdout_baselines.get("trump", [])
-                harris_holdout_baselines = holdout_baselines.get("harris", [])
-
-                # Create continuous baseline lines
-                if len(trump_holdout_baselines) > 0 and len(baselines["trump"]) > 0:
-                    continuous_trump_baseline_dates = [holdout_dates.iloc[-1]] + list(
-                        test_dates
-                    )
-                    continuous_harris_baseline_dates = [holdout_dates.iloc[-1]] + list(
-                        test_dates
-                    )
-                    continuous_trump_baselines = [trump_holdout_baselines[-1]] + list(
-                        baselines["trump"]
-                    )
-                    continuous_harris_baselines = [harris_holdout_baselines[-1]] + list(
-                        baselines["harris"]
-                    )
-
-                    plt.plot(
-                        continuous_trump_baseline_dates,
-                        continuous_trump_baselines,
-                        "r:",
-                        linewidth=1.5,
-                        alpha=0.7,
-                        label="Trump baseline forecast",
-                    )
-                    plt.plot(
-                        continuous_harris_baseline_dates,
-                        continuous_harris_baselines,
-                        "b:",
-                        linewidth=1.5,
-                        alpha=0.7,
-                        label="Harris baseline forecast",
-                    )
-                else:
-                    # Fallback: plot future baselines without connection
-                    plt.plot(
-                        test_dates,
-                        baselines["trump"],
-                        "r:",
-                        linewidth=1.5,
-                        alpha=0.7,
-                        label="Trump baseline forecast",
-                    )
-                    plt.plot(
-                        test_dates,
-                        baselines["harris"],
-                        "b:",
-                        linewidth=1.5,
-                        alpha=0.7,
-                        label="Harris baseline forecast",
-                    )
-            else:
-                # No holdout period: plot future baselines normally
-                plt.plot(
-                    test_dates,
-                    baselines["trump"],
-                    "r:",
-                    linewidth=1.5,
-                    alpha=0.7,
-                    label="Trump baseline forecast",
-                )
-                plt.plot(
-                    test_dates,
-                    baselines["harris"],
-                    "b:",
-                    linewidth=1.5,
-                    alpha=0.7,
-                    label="Harris baseline forecast",
-                )
+            self._plot_connected_baselines(
+                test_dates,
+                baselines,
+                holdout_dates if training_end_date else None,
+                holdout_baselines,
+                training_end_date,
+            )
 
         # Formatting
         plt.xlabel("Date", fontsize=12)
@@ -405,12 +238,11 @@ class ElectionPlotter:
 
         # Title with correct forecast date
         if forecast_date:
-            if isinstance(forecast_date, date) and not isinstance(
-                forecast_date, datetime
-            ):
-                title_date = forecast_date.strftime("%a %b %d %Y")
-            else:
-                title_date = forecast_date.strftime("%a %b %d %Y")
+            title_date = (
+                forecast_date.strftime("%a %b %d %Y")
+                if isinstance(forecast_date, (date, datetime))
+                else forecast_date
+            )
         else:
             title_date = (
                 test_dates[0].strftime("%a %b %d %Y")
@@ -418,14 +250,10 @@ class ElectionPlotter:
                 else pd.Timestamp.today().strftime("%a %b %d %Y")
             )
 
-        plt.title(
-            f"Predictions for Election Day, as of {title_date}",
-            fontsize=16,
-        )
-
+        plt.title(f"Predictions for Election Day, as of {title_date}", fontsize=16)
         plt.legend()
 
-        # Add parameter annotations with proper LaTeX formatting
+        # Add parameter annotations
         election_day_dt = datetime(2024, 11, 5)
         trump_final = (
             round(forecasts["trump"][-1], 1) if len(forecasts["trump"]) > 0 else 47.0
@@ -444,15 +272,13 @@ class ElectionPlotter:
             xytext=(datetime(2024, 7, 23), 40.5),
         )
 
-        # Save plot with proper overwrite handling
+        # Save plot
         if save_path:
             try:
-                # Force remove existing file if it exists
                 if save_path.exists():
                     save_path.unlink()
                     logger.debug(f"Removed existing file: {save_path}")
 
-                # Save with explicit parameters for clean output
                 plt.savefig(
                     save_path,
                     bbox_inches="tight",
@@ -465,18 +291,145 @@ class ElectionPlotter:
             except Exception as e:
                 logger.error(f"Error saving main forecast plot: {e}")
             finally:
-                # Always close the figure to free memory
                 plt.close()
         else:
-            # Close figure even if not saving
             plt.close()
+
+    def _plot_connected_forecasts(
+        self,
+        test_dates,
+        forecasts,
+        holdout_dates,
+        fitted_values,
+        training_end_date,
+        label_suffix,
+    ):
+        """Plot future forecasts with proper connection to holdout predictions."""
+        if training_end_date and holdout_dates is not None and len(holdout_dates) > 0:
+            n_training = len(
+                pd.Series(holdout_dates)[pd.Series(holdout_dates) < training_end_date]
+            )
+            if len(fitted_values["trump"]) > n_training:
+                trump_holdout_preds = fitted_values["trump"][n_training:]
+                harris_holdout_preds = fitted_values["harris"][n_training:]
+
+                # Create continuous prediction lines
+                if len(trump_holdout_preds) > 0 and len(forecasts["trump"]) > 0:
+                    continuous_trump_dates = [holdout_dates.iloc[-1]] + list(test_dates)
+                    continuous_harris_dates = [holdout_dates.iloc[-1]] + list(
+                        test_dates
+                    )
+                    continuous_trump_preds = [trump_holdout_preds[-1]] + list(
+                        forecasts["trump"]
+                    )
+                    continuous_harris_preds = [harris_holdout_preds[-1]] + list(
+                        forecasts["harris"]
+                    )
+
+                    plt.plot(
+                        continuous_trump_dates,
+                        continuous_trump_preds,
+                        "r--",
+                        linewidth=2,
+                        alpha=0.8,
+                        label="Trump future forecast",
+                    )
+                    plt.plot(
+                        continuous_harris_dates,
+                        continuous_harris_preds,
+                        "b--",
+                        linewidth=2,
+                        alpha=0.8,
+                        label="Harris future forecast",
+                    )
+                    return
+
+        # Fallback: plot future forecasts without connection
+        plt.plot(
+            test_dates,
+            forecasts["trump"],
+            "r--",
+            linewidth=2,
+            alpha=0.8,
+            label="Trump future forecast",
+        )
+        plt.plot(
+            test_dates,
+            forecasts["harris"],
+            "b--",
+            linewidth=2,
+            alpha=0.8,
+            label="Harris future forecast",
+        )
+
+    def _plot_connected_baselines(
+        self, test_dates, baselines, holdout_dates, holdout_baselines, training_end_date
+    ):
+        """Plot baseline forecasts with proper connection to holdout baselines."""
+        if (
+            training_end_date
+            and holdout_dates is not None
+            and len(holdout_dates) > 0
+            and holdout_baselines is not None
+        ):
+            trump_holdout_baselines = holdout_baselines.get("trump", [])
+            harris_holdout_baselines = holdout_baselines.get("harris", [])
+
+            # Create continuous baseline lines
+            if len(trump_holdout_baselines) > 0 and len(baselines["trump"]) > 0:
+                continuous_trump_baseline_dates = [holdout_dates.iloc[-1]] + list(
+                    test_dates
+                )
+                continuous_harris_baseline_dates = [holdout_dates.iloc[-1]] + list(
+                    test_dates
+                )
+                continuous_trump_baselines = [trump_holdout_baselines[-1]] + list(
+                    baselines["trump"]
+                )
+                continuous_harris_baselines = [harris_holdout_baselines[-1]] + list(
+                    baselines["harris"]
+                )
+
+                plt.plot(
+                    continuous_trump_baseline_dates,
+                    continuous_trump_baselines,
+                    "r:",
+                    linewidth=1.5,
+                    alpha=0.7,
+                    label="Trump baseline forecast",
+                )
+                plt.plot(
+                    continuous_harris_baseline_dates,
+                    continuous_harris_baselines,
+                    "b:",
+                    linewidth=1.5,
+                    alpha=0.7,
+                    label="Harris baseline forecast",
+                )
+                return
+
+        # Fallback: plot future baselines without connection
+        plt.plot(
+            test_dates,
+            baselines["trump"],
+            "r:",
+            linewidth=1.5,
+            alpha=0.7,
+            label="Trump baseline forecast",
+        )
+        plt.plot(
+            test_dates,
+            baselines["harris"],
+            "b:",
+            linewidth=1.5,
+            alpha=0.7,
+            label="Harris baseline forecast",
+        )
 
     def _plot_continuous_segments(
         self, data, color, label_prefix, line_style="-", marker="o", markersize=4
     ):
-        """
-        Plot data in continuous segments, breaking lines at gaps.
-        """
+        """Plot data in continuous segments, breaking lines at gaps."""
         if len(data) == 0:
             return
 
@@ -536,9 +489,7 @@ class ElectionPlotter:
     def _plot_baseline_segments(
         self, data, color, label_prefix, line_style="--", marker="s", markersize=3
     ):
-        """
-        Plot baseline data in continuous segments, breaking lines at gaps.
-        """
+        """Plot baseline data in continuous segments, breaking lines at gaps."""
         baseline_data = data[data["baseline"].notna()]
         if len(baseline_data) == 0:
             return
@@ -547,7 +498,7 @@ class ElectionPlotter:
         data_sorted = baseline_data.sort_values("date").copy()
         data_sorted["plot_date"] = pd.to_datetime(data_sorted["date"])
 
-        # Find gaps in the date sequence (more than 1 day apart)
+        # Find gaps and split into segments (same logic as _plot_continuous_segments)
         gaps = []
         for i in range(1, len(data_sorted)):
             current_date = data_sorted.iloc[i]["plot_date"]
@@ -556,24 +507,21 @@ class ElectionPlotter:
             if days_diff > 1:
                 gaps.append(i)
 
-        # Split into continuous segments
         segments = []
         start_idx = 0
         for gap_idx in gaps:
             segments.append(data_sorted.iloc[start_idx:gap_idx])
             start_idx = gap_idx
-        segments.append(data_sorted.iloc[start_idx:])  # Last segment
+        segments.append(data_sorted.iloc[start_idx:])
 
         # Plot each segment separately
         for i, segment in enumerate(segments):
             if len(segment) == 0:
                 continue
 
-            # Only add label to the first segment to avoid duplicate legend entries
             segment_label = label_prefix if i == 0 else None
 
             if len(segment) == 1:
-                # Single point - just plot marker
                 plt.plot(
                     segment["plot_date"],
                     segment["baseline"],
@@ -584,7 +532,6 @@ class ElectionPlotter:
                     label=segment_label,
                 )
             else:
-                # Multiple points - plot line segment
                 plt.plot(
                     segment["plot_date"],
                     segment["baseline"],
@@ -602,10 +549,7 @@ class ElectionPlotter:
         forecast_date=None,
         save_path: Optional[Path] = None,
     ):
-        """
-        Create historical forecasts plot showing how predictions changed over time.
-        Now with gap-aware plotting that breaks lines at missing dates.
-        """
+        """Create historical forecasts plot showing how predictions changed over time."""
         logger.info("Creating historical forecasts plot...")
 
         # Separate by candidate - only get data that actually exists (not NaN)
@@ -634,18 +578,14 @@ class ElectionPlotter:
             plt.ylim(45, 52)
             plt.xlabel("Date", fontsize=12)
             plt.ylabel("Percentage of popular vote", fontsize=12)
-            if forecast_date:
-                plt.title(
-                    f"Predictions up to {forecast_date.strftime('%a %b %d %Y')}",
-                    fontsize=16,
-                )
-            else:
-                plt.title("Election Forecast Evolution", fontsize=16)
 
-            # Save empty plot with proper overwrite handling
+            title_date = forecast_date or datetime(2024, 10, 22).date()
+            plt.title(
+                f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
+            )
+
             if save_path:
                 try:
-                    # Force remove existing file if it exists
                     if save_path.exists():
                         save_path.unlink()
                         logger.debug(f"Removed existing file: {save_path}")
@@ -715,8 +655,6 @@ class ElectionPlotter:
         # Formatting
         plt.xlabel("Date", fontsize=12)
         plt.ylabel("Percentage of popular vote", fontsize=12)
-
-        # Set x-axis limits - no padding
         plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
         plt.ylim(45, 52)
 
@@ -749,19 +687,15 @@ class ElectionPlotter:
             f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
         )
         plt.legend()
-
-        # Add subtle grid for better readability
         plt.grid(True, alpha=0.3)
 
-        # Save plot with proper overwrite handling
+        # Save plot
         if save_path:
             try:
-                # Force remove existing file if it exists
                 if save_path.exists():
                     save_path.unlink()
                     logger.debug(f"Removed existing file: {save_path}")
 
-                # Save with explicit parameters for clean output
                 plt.savefig(
                     save_path,
                     bbox_inches="tight",
@@ -774,8 +708,6 @@ class ElectionPlotter:
             except Exception as e:
                 logger.error(f"Error saving historical forecasts plot: {e}")
             finally:
-                # Always close the figure to free memory
                 plt.close()
         else:
-            # Close figure even if not saving
             plt.close()

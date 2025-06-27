@@ -3,7 +3,6 @@
 
 import pandas as pd
 import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +15,7 @@ class PollingDataCollector:
         self.config = config
 
     def load_raw_data(self) -> pd.DataFrame:
-        """
-        Load raw polling data from CSV file specified in ../config.py.
-        """
+        """Load raw polling data from CSV file specified in config."""
         try:
             logger.info(f"Loading raw data from {self.config.raw_data_path}")
             raw_data = pd.read_csv(self.config.raw_data_path)

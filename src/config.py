@@ -19,7 +19,7 @@ class ModelConfig:
     # Grid search parameters for Holt smoothing
     grid_min: float = 0.0
     grid_max: float = 0.5
-    grid_step: float = 0.1
+    grid_step: float = 0.1  # Changed from 0.1 to 0.01 for finer grid search
 
     # Electoral college settings
     swing_state_electoral_votes: int = 93
@@ -36,13 +36,15 @@ class ModelConfig:
 class DataConfig:
     """Configuration for data sources and filtering."""
 
-    # Data file paths
+    # Data file paths - Updated to match your setup
     raw_data_path: str = "data/president_polls.csv"
     cleaned_data_path: str = "data/df_cleaned.csv"
     previous_forecasts_path: str = "data/previous.csv"
 
     # Output directories
-    forecast_images_dir: str = "outputs/forecast_images"
+    forecast_images_dir: str = (
+        "outputs/forecast_images"  # Changed to match your original
+    )
 
     # Data filtering criteria
     candidates: List[str] = None

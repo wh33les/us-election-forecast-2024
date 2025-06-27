@@ -37,13 +37,31 @@ class ForecastRunner:
         self.formatter = ResultFormatter(verbose, debug)
 
     def run_forecasts(self, forecast_dates):
-        """Run forecasts for all specified dates."""
+        """Run forecasts for all specified dates using incremental data loading."""
         logger.info("Starting Rolling Election Forecast 2024 pipeline...")
 
-        # Load and process data once
-        daily_averages = self._load_and_process_data()
-        if daily_averages is None:
-            return False
+        # Determine if we need incremental loading
+        comprehensive_path = Path("data/election_forecast_2024_comprehensive.csv")
+        use_incremental = comprehensive_path.exists()
+
+        if use_incremental:
+            logger.info(
+                "📊 Using incremental data loading (existing comprehensive dataset found)"
+            )
+        else:
+            logger.info(
+                "📊 Using full data loading (no existing comprehensive dataset)"
+            )
+
+        # Load and process data
+        if use_incremental:
+            # For incremental loading, we'll load data on each iteration
+            daily_averages = None
+        else:
+            # For full loading, load all data once
+            daily_averages = self._load_and_process_data()
+            if daily_averages is None:
+                return False
 
         # Initialize comprehensive dataset
         comprehensive_dataset = self.data_manager.load_or_create_comprehensive_dataset()
@@ -66,8 +84,23 @@ class ForecastRunner:
                     i + 1, len(forecast_dates), forecast_date
                 )
 
+                # Load data for this specific date (incremental or full)
+                if use_incremental:
+                    daily_averages_for_date = self._load_incremental_data_for_date(
+                        forecast_date
+                    )
+                else:
+                    daily_averages_for_date = daily_averages
+
+                if daily_averages_for_date is None:
+                    logger.warning(f"No data available for {forecast_date}")
+                    continue
+
                 result = self._run_single_forecast(
-                    forecast_date, daily_averages, election_day, comprehensive_dataset
+                    forecast_date,
+                    daily_averages_for_date,
+                    election_day,
+                    comprehensive_dataset,
                 )
 
                 if result is not None:
@@ -86,8 +119,37 @@ class ForecastRunner:
         )
         return success_count > 0
 
+    def _load_incremental_data_for_date(self, forecast_date):
+        """Load data incrementally for a specific forecast date."""
+        if self.verbose:
+            logger.info(f"📊 Loading data incrementally for {forecast_date}")
+
+        try:
+            # Use the new incremental loading method
+            daily_averages = self.collector.load_data_for_incremental_pipeline(
+                forecast_date
+            )
+
+            if len(daily_averages) == 0:
+                logger.warning(f"No data available for {forecast_date}")
+                return None
+
+            if self.verbose:
+                logger.info(f"✅ Loaded {len(daily_averages)} daily average records")
+                logger.info(
+                    f"📅 Date range: {daily_averages['end_date'].min()} to {daily_averages['end_date'].max()}"
+                )
+
+            return daily_averages
+
+        except Exception as e:
+            logger.error(f"Failed to load incremental data for {forecast_date}: {e}")
+            if self.debug:
+                logger.exception("Incremental data loading error:")
+            return None
+
     def _load_and_process_data(self):
-        """Load and process all raw data once."""
+        """Load and process all raw data once (original method for full loading)."""
         if self.verbose:
             logger.info("📊 LOADING AND PROCESSING DATA")
             logger.info("-" * 40)
@@ -211,9 +273,24 @@ class ForecastRunner:
             return None
 
         # Update comprehensive dataset
+        if self.verbose:
+            logger.info("   💾 Updating comprehensive dataset...")
+            logger.info(
+                f"   📊 Current dataset size: {len(comprehensive_dataset)} records"
+            )
+
         comprehensive_dataset = self._update_dataset(
-            comprehensive_dataset, forecast_results, forecast_date
+            comprehensive_dataset,
+            forecast_results,
+            forecast_date,
+            daily_averages,
         )
+
+        if self.verbose:
+            logger.info(
+                f"   📊 Updated dataset size: {len(comprehensive_dataset)} records"
+            )
+            logger.info("   ✅ Dataset update completed")
 
         # Generate visualizations
         self._generate_visualizations(
@@ -275,32 +352,43 @@ class ForecastRunner:
 
         fitted_models = forecaster.fit_final_models(trump_train, harris_train)
 
-        # Generate predictions
+        # Calculate forecast horizons
         holdout_dates = pd.date_range(
             start=train_cutoff_date, end=forecast_date, inclusive="left"
         ).date
         holdout_horizon = len(holdout_dates)
-        days_till_then = pd.date_range(start=forecast_date, end=election_day).date
-        total_horizon = holdout_horizon + len(days_till_then)
+
+        # Both CSV and plotting should store complete forecasts from forecast_date to Election Day
+        # The historical plotting will extract only the Election Day prediction later
+        forecast_days_till_then = pd.date_range(
+            start=forecast_date, end=election_day, inclusive="both"
+        ).date.tolist()
+        total_horizon = holdout_horizon + len(forecast_days_till_then)
 
         if self.verbose:
             logger.info(
-                f"   📈 Generating predictions: {holdout_horizon} holdout + {len(days_till_then)} forecast periods..."
+                f"   📈 Generating predictions for CSV storage: {holdout_horizon} holdout + {len(forecast_days_till_then)} forecast periods to Election Day..."
+            )
+            logger.info(
+                f"   🎨 Generating predictions for visualization: same as CSV storage ({total_horizon} total periods)..."
             )
             if holdout_horizon > 0:
                 logger.info(
                     f"   🔍 Holdout validation: {holdout_dates[0]} to {holdout_dates[-1]}"
                 )
         else:
-            logger.info(f"Generating predictions for {total_horizon} total periods...")
+            logger.info(
+                f"Generating predictions: {total_horizon} periods (holdout + forecast to Election Day)..."
+            )
 
+        # Generate predictions (complete forecast to Election Day)
         all_predictions = forecaster.forecast(total_horizon)
-        logger.info("Generating continuous baseline forecasts...")
+        logger.info("Generating baseline forecasts...")
         all_baselines = forecaster.generate_baseline_forecasts(
             trump_train, harris_train, total_horizon
         )
 
-        # Split predictions
+        # Split predictions between holdout and forecast periods
         if holdout_horizon > 0:
             holdout_predictions = {
                 "trump": all_predictions["trump"][:holdout_horizon],
@@ -332,12 +420,12 @@ class ForecastRunner:
                 holdout_predictions, trump_holdout, harris_holdout
             )
 
-        # Calculate electoral outcomes
+        # Calculate electoral outcomes - use complete forecasts
         electoral_results = self._calculate_electoral_outcomes(
             forecasts, baselines, forecast_date, election_day
         )
 
-        # Prepare complete datasets for plotting
+        # Prepare datasets for plotting (use same data as CSV - complete forecast)
         plotting_data = self._prepare_plotting_data(
             trump_train,
             harris_train,
@@ -347,26 +435,33 @@ class ForecastRunner:
             holdout_predictions,
             forecasts,
             baselines,
-            days_till_then,
+            forecast_days_till_then,
             holdout_baselines,
         )
 
         return {
+            # Data for CSV storage (complete forecast from forecast_date to Election Day)
             "trump_train": trump_train,
             "harris_train": harris_train,
+            "fitted_values": fitted_values,
+            "forecasts": forecasts,  # Complete forecast to Election Day
+            "baselines": baselines,  # Complete baseline to Election Day
+            "holdout_baselines": holdout_baselines,
+            "days_till_then": forecast_days_till_then,  # All forecast dates
+            "future_forecast_dates": forecast_days_till_then,  # All forecast dates
+            # Data for visualization (same as CSV)
             "trump_complete": plotting_data["trump_complete"],
             "harris_complete": plotting_data["harris_complete"],
-            "fitted_values": fitted_values,
             "complete_fitted_values": plotting_data["complete_fitted_values"],
-            "forecasts": forecasts,
-            "baselines": baselines,
-            "holdout_baselines": holdout_baselines,
-            "days_till_then": days_till_then,
+            "plotting_forecasts": forecasts,  # Same as CSV forecasts
+            "plotting_baselines": baselines,  # Same as CSV baselines
+            "plotting_days_till_then": forecast_days_till_then,  # Same as CSV dates
+            "plotting_holdout_baselines": holdout_baselines,
+            # Shared data
             "electoral_results": electoral_results,
             "best_params": best_params,
             "train_cutoff_date": train_cutoff_date,
             "historical_dates": plotting_data["historical_dates"],
-            "future_forecast_dates": list(days_till_then),
         }
 
     def _log_holdout_performance(
@@ -570,7 +665,13 @@ class ForecastRunner:
             "historical_dates": historical_dates,
         }
 
-    def _update_dataset(self, comprehensive_dataset, forecast_results, forecast_date):
+    def _update_dataset(
+        self,
+        comprehensive_dataset,
+        forecast_results,
+        forecast_date,
+        complete_polling_data=None,
+    ):
         """Update the comprehensive dataset with new forecast results."""
         training_data = pd.concat(
             [forecast_results["trump_train"], forecast_results["harris_train"]],
@@ -587,6 +688,7 @@ class ForecastRunner:
             forecast_date,
             forecast_results["electoral_results"],
             forecast_results["best_params"],
+            complete_polling_data=complete_polling_data,  # Pass complete polling data
         )
 
         # Remove existing records for this forecast date
@@ -635,7 +737,21 @@ class ForecastRunner:
             Path(self.data_config.forecast_images_dir)
             / f"{forecast_date.strftime('%d%b')}.png"
         )
+
+        # Debug: Show the exact path being used
+        if self.verbose:
+            logger.info(
+                f"   📁 Creating forecast plot at: {forecast_plot_path.absolute()}"
+            )
+            logger.info(
+                f"   📁 Directory configured as: {self.data_config.forecast_images_dir}"
+            )
+
         forecast_plot_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Debug: Confirm directory was created
+        if self.verbose:
+            logger.info(f"   📁 Directory exists: {forecast_plot_path.parent.exists()}")
 
         if forecast_plot_path.exists():
             forecast_plot_path.unlink()
@@ -643,22 +759,38 @@ class ForecastRunner:
         try:
             self.plotter.plot_main_forecast(
                 forecast_results["historical_dates"],
-                forecast_results["future_forecast_dates"],
+                forecast_results[
+                    "plotting_days_till_then"
+                ],  # Use plotting data for visualization
                 forecast_results["trump_complete"],
                 forecast_results["harris_complete"],
-                forecast_results["forecasts"],
-                forecast_results["baselines"],
+                forecast_results[
+                    "plotting_forecasts"
+                ],  # Use plotting forecasts for visualization
+                forecast_results[
+                    "plotting_baselines"
+                ],  # Use plotting baselines for visualization
                 forecast_results["complete_fitted_values"],
                 forecast_results["best_params"],
-                forecast_results["future_forecast_dates"],
+                forecast_results[
+                    "plotting_days_till_then"
+                ],  # Use plotting data for future dates
                 forecast_date=forecast_date,
                 training_end_date=forecast_results["train_cutoff_date"],
-                holdout_baselines=forecast_results["holdout_baselines"],
+                holdout_baselines=forecast_results[
+                    "plotting_holdout_baselines"
+                ],  # Use plotting holdout baselines
                 save_path=forecast_plot_path,
             )
 
             if self.debug:
                 logger.debug(f"✅ Saved forecast plot to: {forecast_plot_path}")
+                logger.debug(
+                    f"✅ File exists after save: {forecast_plot_path.exists()}"
+                )
+                logger.debug(
+                    f"✅ File size: {forecast_plot_path.stat().st_size if forecast_plot_path.exists() else 'N/A'} bytes"
+                )
 
         except Exception as e:
             logger.error(f"❌ Failed to create forecast plot: {e}")

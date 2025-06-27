@@ -44,6 +44,7 @@ class DataManager:
         forecast_date,
         electoral_results,
         best_params,
+        complete_polling_data=None,  # NEW: Accept complete polling data
     ):
         """Create comprehensive forecast record combining all data."""
         logger.debug(
@@ -53,8 +54,23 @@ class DataManager:
         comprehensive_records = []
         election_day = date(2024, 11, 5)
 
-        # Add historical polling data (from training set only)
-        for _, row in training_data.iterrows():
+        # Use complete polling data if provided, otherwise fall back to training data
+        if complete_polling_data is not None:
+            # Filter to only include data before forecast date (for proper data leakage prevention)
+            polling_data_to_save = complete_polling_data[
+                complete_polling_data["end_date"] < forecast_date
+            ].copy()
+            logger.debug(
+                f"Using complete polling data: {len(polling_data_to_save)} records up to {forecast_date}"
+            )
+        else:
+            polling_data_to_save = training_data
+            logger.debug(
+                f"Using training data only: {len(polling_data_to_save)} records"
+            )
+
+        # Add ALL available historical polling data (including newly processed dates like 10-23)
+        for _, row in polling_data_to_save.iterrows():
             record = self._create_base_record(
                 row, forecast_date, election_day, "historical_polling"
             )
@@ -67,12 +83,13 @@ class DataManager:
             )
             comprehensive_records.append(record)
 
-        # Add model fitted values for historical dates (training period only)
-        historical_dates = (
+        # Add model fitted values for historical dates (training period only for fitted values)
+        # Fitted values are only available for the training period, not the newly processed dates
+        training_dates = (
             training_data["end_date"].drop_duplicates().sort_values().tolist()
         )
 
-        for i, hist_date in enumerate(historical_dates):
+        for i, hist_date in enumerate(training_dates):
             for candidate, candidate_name in [
                 ("trump", "Donald Trump"),
                 ("harris", "Kamala Harris"),
@@ -95,17 +112,21 @@ class DataManager:
                     )
                     comprehensive_records.append(record)
 
-        # Add forecasts
+        # Add forecasts - but only store the Election Day forecast for historical tracking
+        election_day_index = None
         for i, forecast_day in enumerate(days_till_then):
-            days_ahead = i + 1
-            is_election_day = forecast_day == election_day
+            if forecast_day == election_day:
+                election_day_index = i
+                break
 
+        if election_day_index is not None:
+            # Only save the Election Day forecast
             for candidate, candidate_name in [
                 ("trump", "Donald Trump"),
                 ("harris", "Kamala Harris"),
             ]:
                 record = self._create_base_record_with_date(
-                    forecast_day,
+                    election_day,
                     candidate_name,
                     forecast_date,
                     election_day,
@@ -113,20 +134,23 @@ class DataManager:
                 )
                 record.update(
                     {
-                        "model_prediction": forecasts[candidate][i],
-                        "baseline_prediction": baselines[candidate][i],
+                        "model_prediction": forecasts[candidate][election_day_index],
+                        "baseline_prediction": baselines[candidate][election_day_index],
                         "is_forecast": True,
-                        "forecast_horizon": days_ahead,
+                        "forecast_horizon": len(
+                            days_till_then
+                        ),  # Days from forecast_date to Election Day
                         "alpha": best_params[candidate]["alpha"],
                         "beta": best_params[candidate]["beta"],
                         "mase_score": best_params[candidate]["mase"],
                     }
                 )
-
-                if is_election_day:
-                    record.update(self._get_electoral_data(electoral_results))
-
+                record.update(self._get_electoral_data(electoral_results))
                 comprehensive_records.append(record)
+        else:
+            logger.warning(
+                f"Election Day not found in forecast period for {forecast_date}"
+            )
 
         df_comprehensive = pd.DataFrame(comprehensive_records)
         df_comprehensive = df_comprehensive.sort_values(
@@ -134,6 +158,17 @@ class DataManager:
         ).reset_index(drop=True)
 
         logger.debug(f"Created comprehensive record with {len(df_comprehensive)} rows")
+
+        # Debug: Show date range of what we're saving
+        if len(df_comprehensive) > 0:
+            polling_records = df_comprehensive[
+                df_comprehensive["record_type"] == "historical_polling"
+            ]
+            if len(polling_records) > 0:
+                logger.debug(
+                    f"Polling data being saved: {polling_records['date'].min()} to {polling_records['date'].max()}"
+                )
+
         return df_comprehensive
 
     def _create_base_record(self, row, forecast_date, election_day, record_type):
@@ -255,8 +290,9 @@ class DataManager:
     def create_historical_data_for_plotting(self, comprehensive_dataset, forecast_date):
         """Create historical forecast data in the format expected by plotting functions."""
         election_day = date(2024, 11, 5)
+        # Look for Election Day forecasts made by different forecast runs
         historical_forecasts = comprehensive_dataset[
-            (comprehensive_dataset["date"] == election_day)
+            (comprehensive_dataset["date"] == election_day)  # Election Day forecasts
             & (comprehensive_dataset["record_type"] == "forecast")
             & (comprehensive_dataset["forecast_run_date"] <= forecast_date)
         ].copy()

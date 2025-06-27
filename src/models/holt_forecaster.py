@@ -217,22 +217,30 @@ class HoltElectionForecaster:
         self, trump_data: pd.DataFrame, harris_data: pd.DataFrame, horizon: int
     ) -> Dict[str, np.ndarray]:
         """
-        Generate random walk with drift baseline forecasts.
-        From your original forecast.py baseline logic.
+        Generate linear drift baseline forecasts (straight lines).
+
+        This calculates a simple linear trend from the training data and
+        extrapolates it forward as a straight line.
         """
         logger.info(f"Generating baseline forecasts for {horizon} periods...")
 
-        # Trump baseline
+        # Trump baseline - calculate linear drift and extrapolate
         trump_values = trump_data.daily_average.values
         trump_drift = (trump_values[-1] - trump_values[0]) / len(trump_values)
         trump_baseline = trump_values[-1] + trump_drift * np.arange(1, horizon + 1)
 
-        # Harris baseline
+        # Harris baseline - calculate linear drift and extrapolate
         harris_values = harris_data.daily_average.values
         harris_drift = (harris_values[-1] - harris_values[0]) / len(harris_values)
         harris_baseline = harris_values[-1] + harris_drift * np.arange(1, horizon + 1)
 
         baselines = {"trump": trump_baseline, "harris": harris_baseline}
+
+        # Log baseline info for debugging
+        logger.debug(f"Trump drift: {trump_drift:.4f} per period")
+        logger.debug(f"Harris drift: {harris_drift:.4f} per period")
+        logger.debug(f"Trump baseline first 3 values: {trump_baseline[:3]}")
+        logger.debug(f"Harris baseline first 3 values: {harris_baseline[:3]}")
 
         logger.info("Baseline forecasts generated successfully")
         return baselines

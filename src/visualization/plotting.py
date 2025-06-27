@@ -28,69 +28,339 @@ class ElectionPlotter:
 
     def plot_main_forecast(
         self,
-        all_dates: pd.Series,
-        test_dates: pd.Series,
-        trump_data: pd.DataFrame,
-        harris_data: pd.DataFrame,
-        forecasts: Dict[str, np.ndarray],
-        baselines: Dict[str, np.ndarray],
-        fitted_values: Dict[str, np.ndarray],
+        historical_dates: pd.Series,  # Historical dates (training + holdout)
+        test_dates: pd.Series,  # Future forecast dates
+        trump_data: pd.DataFrame,  # Trump data (training + holdout)
+        harris_data: pd.DataFrame,  # Harris data (training + holdout)
+        forecasts: Dict[str, np.ndarray],  # Future forecasts
+        baselines: Dict[str, np.ndarray],  # Future baselines
+        fitted_values: Dict[
+            str, np.ndarray
+        ],  # Combined: training fitted + holdout predictions
         best_params: Dict[str, Dict[str, float]],
         forecast_period_dates: pd.Series,
-        forecast_date: Union[datetime, date] = None,  # Add forecast_date parameter
+        forecast_date: Union[datetime, date] = None,
+        training_end_date: Union[datetime, date] = None,  # When training period ends
+        holdout_baselines: Optional[
+            Dict[str, np.ndarray]
+        ] = None,  # NEW: Baseline predictions for holdout period
         save_path: Optional[Path] = None,
     ):
         """
         Create main forecast plot showing polling data and predictions.
-        From your original forecast.py plotting logic.
+        Training period: only raw polling data (solid lines)
+        Holdout period: raw data + model predictions (dashed lines) + baseline predictions (dotted lines)
+        Future period: model forecasts (dashed lines)
         """
         logger.info("Creating main forecast plot...")
-
-        # Prepare data for plotting (matches your original logic)
-        null_averages = pd.Series(np.nan, index=range(len(forecast_period_dates)))
-
-        # Observed data with NaN for forecast period
-        y_trump_obs = pd.concat(
-            [trump_data["daily_average"], null_averages], ignore_index=True
-        )
-        y_harris_obs = pd.concat(
-            [harris_data["daily_average"], null_averages], ignore_index=True
-        )
 
         # Create figure
         plt.figure(figsize=(12, 6))
 
-        # Plot observed polling averages
-        plt.plot(all_dates, y_trump_obs, "r", label="Trump daily polling average")
-        plt.plot(all_dates, y_harris_obs, "b", label="Harris daily polling average")
+        # Split data into training and holdout periods
+        if training_end_date:
+            # Find the split point in historical_dates
+            training_mask = pd.Series(historical_dates) < training_end_date
+            training_dates = pd.Series(historical_dates)[training_mask]
+            holdout_dates = pd.Series(historical_dates)[~training_mask]
 
-        # Plot forecasts over the test period (including forecast date)
-        plt.plot(
-            test_dates,
-            forecasts["trump"],
-            "r--.",
-            label="Trump prediction",
-        )
-        plt.plot(
-            test_dates,
-            forecasts["harris"],
-            "b--.",
-            label="Harris prediction",
-        )
+            # Split the data accordingly
+            trump_training_data = (
+                trump_data[trump_data.index < len(training_dates)]
+                if len(training_dates) > 0
+                else trump_data.iloc[:0]
+            )
+            harris_training_data = (
+                harris_data[harris_data.index < len(training_dates)]
+                if len(training_dates) > 0
+                else harris_data.iloc[:0]
+            )
+            trump_holdout_data = (
+                trump_data[trump_data.index >= len(training_dates)]
+                if len(training_dates) < len(trump_data)
+                else trump_data.iloc[:0]
+            )
+            harris_holdout_data = (
+                harris_data[harris_data.index >= len(training_dates)]
+                if len(training_dates) < len(harris_data)
+                else harris_data.iloc[:0]
+            )
 
-        # Plot baseline forecasts
-        plt.plot(
-            test_dates,
-            baselines["trump"],
-            "r:",
-            label="Trump random walk with drift baseline forecast",
-        )
-        plt.plot(
-            test_dates,
-            baselines["harris"],
-            "b:",
-            label="Harris random walk with drift baseline forecast",
-        )
+            # Training period: Only show raw polling averages (solid lines)
+            if len(training_dates) > 0:
+                plt.plot(
+                    training_dates,
+                    trump_training_data["daily_average"],
+                    "r",
+                    linewidth=2,
+                    label="Trump daily polling average",
+                )
+                plt.plot(
+                    training_dates,
+                    harris_training_data["daily_average"],
+                    "b",
+                    linewidth=2,
+                    label="Harris daily polling average",
+                )
+
+            # Holdout period: Show raw data (thin lines) + model predictions (dashed lines) + baseline predictions (dotted lines)
+            if len(holdout_dates) > 0:
+                # Raw polling data during holdout (thin lines for context)
+                plt.plot(
+                    holdout_dates,
+                    trump_holdout_data["daily_average"],
+                    "r",
+                    alpha=0.6,
+                    linewidth=1,
+                    label="Trump holdout data",
+                )
+                plt.plot(
+                    holdout_dates,
+                    harris_holdout_data["daily_average"],
+                    "b",
+                    alpha=0.6,
+                    linewidth=1,
+                    label="Harris holdout data",
+                )
+
+                # Model predictions during holdout (dashed lines)
+                n_training = len(training_dates)
+                if len(fitted_values["trump"]) > n_training:
+                    trump_holdout_preds = fitted_values["trump"][n_training:]
+                    harris_holdout_preds = fitted_values["harris"][n_training:]
+
+                    n_holdout = min(len(holdout_dates), len(trump_holdout_preds))
+                    if n_holdout > 0:
+                        plt.plot(
+                            holdout_dates[:n_holdout],
+                            trump_holdout_preds[:n_holdout],
+                            "r--",
+                            linewidth=2,
+                            label="Trump holdout predictions",
+                        )
+                        plt.plot(
+                            holdout_dates[:n_holdout],
+                            harris_holdout_preds[:n_holdout],
+                            "b--",
+                            linewidth=2,
+                            label="Harris holdout predictions",
+                        )
+
+                # Baseline predictions during holdout (dotted lines)
+                if holdout_baselines is not None:
+                    trump_holdout_baselines = holdout_baselines.get("trump", [])
+                    harris_holdout_baselines = holdout_baselines.get("harris", [])
+
+                    n_holdout_baseline = min(
+                        len(holdout_dates), len(trump_holdout_baselines)
+                    )
+                    if n_holdout_baseline > 0:
+                        plt.plot(
+                            holdout_dates[:n_holdout_baseline],
+                            trump_holdout_baselines[:n_holdout_baseline],
+                            "r:",
+                            linewidth=1.5,
+                            alpha=0.8,
+                            label="Trump holdout baseline",
+                        )
+                        plt.plot(
+                            holdout_dates[:n_holdout_baseline],
+                            harris_holdout_baselines[:n_holdout_baseline],
+                            "b:",
+                            linewidth=1.5,
+                            alpha=0.8,
+                            label="Harris holdout baseline",
+                        )
+        else:
+            # Fallback: show all historical data as training data
+            plt.plot(
+                historical_dates,
+                trump_data["daily_average"],
+                "r",
+                linewidth=2,
+                label="Trump daily polling average",
+            )
+            plt.plot(
+                historical_dates,
+                harris_data["daily_average"],
+                "b",
+                linewidth=2,
+                label="Harris daily polling average",
+            )
+
+        # Plot future forecasts (connected to holdout predictions for continuity)
+        if len(test_dates) > 0:
+            # Create continuous prediction lines by combining holdout and future forecasts
+            if training_end_date and len(holdout_dates) > 0:
+                # Get the last holdout prediction values to ensure continuity
+                n_training = len(training_dates)
+                if len(fitted_values["trump"]) > n_training:
+                    trump_holdout_preds = fitted_values["trump"][n_training:]
+                    harris_holdout_preds = fitted_values["harris"][n_training:]
+
+                    # Create continuous dates and predictions (last holdout point + future forecasts)
+                    if len(trump_holdout_preds) > 0 and len(forecasts["trump"]) > 0:
+                        continuous_trump_dates = [holdout_dates.iloc[-1]] + list(
+                            test_dates
+                        )
+                        continuous_harris_dates = [holdout_dates.iloc[-1]] + list(
+                            test_dates
+                        )
+                        continuous_trump_preds = [trump_holdout_preds[-1]] + list(
+                            forecasts["trump"]
+                        )
+                        continuous_harris_preds = [harris_holdout_preds[-1]] + list(
+                            forecasts["harris"]
+                        )
+
+                        plt.plot(
+                            continuous_trump_dates,
+                            continuous_trump_preds,
+                            "r--",
+                            linewidth=2,
+                            alpha=0.8,
+                            label="Trump future forecast",
+                        )
+                        plt.plot(
+                            continuous_harris_dates,
+                            continuous_harris_preds,
+                            "b--",
+                            linewidth=2,
+                            alpha=0.8,
+                            label="Harris future forecast",
+                        )
+                    else:
+                        # Fallback: plot future forecasts without connection
+                        plt.plot(
+                            test_dates,
+                            forecasts["trump"],
+                            "r--",
+                            linewidth=2,
+                            alpha=0.8,
+                            label="Trump future forecast",
+                        )
+                        plt.plot(
+                            test_dates,
+                            forecasts["harris"],
+                            "b--",
+                            linewidth=2,
+                            alpha=0.8,
+                            label="Harris future forecast",
+                        )
+                else:
+                    # Fallback: plot future forecasts without connection
+                    plt.plot(
+                        test_dates,
+                        forecasts["trump"],
+                        "r--",
+                        linewidth=2,
+                        alpha=0.8,
+                        label="Trump future forecast",
+                    )
+                    plt.plot(
+                        test_dates,
+                        forecasts["harris"],
+                        "b--",
+                        linewidth=2,
+                        alpha=0.8,
+                        label="Harris future forecast",
+                    )
+            else:
+                # No holdout period: plot future forecasts normally
+                plt.plot(
+                    test_dates,
+                    forecasts["trump"],
+                    "r--",
+                    linewidth=2,
+                    alpha=0.8,
+                    label="Trump future forecast",
+                )
+                plt.plot(
+                    test_dates,
+                    forecasts["harris"],
+                    "b--",
+                    linewidth=2,
+                    alpha=0.8,
+                    label="Harris future forecast",
+                )
+
+        # Plot baseline forecasts (connected to holdout baselines for continuity)
+        if len(test_dates) > 0:
+            if (
+                training_end_date
+                and len(holdout_dates) > 0
+                and holdout_baselines is not None
+            ):
+                trump_holdout_baselines = holdout_baselines.get("trump", [])
+                harris_holdout_baselines = holdout_baselines.get("harris", [])
+
+                # Create continuous baseline lines
+                if len(trump_holdout_baselines) > 0 and len(baselines["trump"]) > 0:
+                    continuous_trump_baseline_dates = [holdout_dates.iloc[-1]] + list(
+                        test_dates
+                    )
+                    continuous_harris_baseline_dates = [holdout_dates.iloc[-1]] + list(
+                        test_dates
+                    )
+                    continuous_trump_baselines = [trump_holdout_baselines[-1]] + list(
+                        baselines["trump"]
+                    )
+                    continuous_harris_baselines = [harris_holdout_baselines[-1]] + list(
+                        baselines["harris"]
+                    )
+
+                    plt.plot(
+                        continuous_trump_baseline_dates,
+                        continuous_trump_baselines,
+                        "r:",
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label="Trump baseline forecast",
+                    )
+                    plt.plot(
+                        continuous_harris_baseline_dates,
+                        continuous_harris_baselines,
+                        "b:",
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label="Harris baseline forecast",
+                    )
+                else:
+                    # Fallback: plot future baselines without connection
+                    plt.plot(
+                        test_dates,
+                        baselines["trump"],
+                        "r:",
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label="Trump baseline forecast",
+                    )
+                    plt.plot(
+                        test_dates,
+                        baselines["harris"],
+                        "b:",
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label="Harris baseline forecast",
+                    )
+            else:
+                # No holdout period: plot future baselines normally
+                plt.plot(
+                    test_dates,
+                    baselines["trump"],
+                    "r:",
+                    linewidth=1.5,
+                    alpha=0.7,
+                    label="Trump baseline forecast",
+                )
+                plt.plot(
+                    test_dates,
+                    baselines["harris"],
+                    "b:",
+                    linewidth=1.5,
+                    alpha=0.7,
+                    label="Harris baseline forecast",
+                )
 
         # Formatting
         plt.xlabel("Date", fontsize=12)
@@ -122,7 +392,9 @@ class ElectionPlotter:
 
         # Add parameter annotations with proper LaTeX formatting
         election_day_dt = datetime(2024, 11, 5)
-        trump_final = round(forecasts["trump"][-1], 1)
+        trump_final = (
+            round(forecasts["trump"][-1], 1) if len(forecasts["trump"]) > 0 else 47.0
+        )
 
         param_text = (
             f"$\\alpha_{{Trump}} = {best_params['trump']['alpha']:.2f}$\n"

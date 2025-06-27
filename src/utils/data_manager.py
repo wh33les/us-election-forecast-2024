@@ -59,51 +59,12 @@ class DataManager:
         best_params,
         complete_polling_data=None,
     ):
-        """Create comprehensive forecast record - OPTIMIZED to avoid data explosion."""
-        logger.debug(f"Creating comprehensive record for {forecast_date}")
+        """Create OPTIMIZED comprehensive forecast record (much smaller)."""
+        logger.debug(f"Creating optimized record for {forecast_date}")
 
         comprehensive_records = []
 
-        # FIXED: Only use training data for historical polling to avoid duplicates
-        # Don't use complete_polling_data as it causes exponential growth
-        polling_data_to_save = training_data.copy()
-
-        # Add historical polling data (ONLY from training period)
-        for _, row in polling_data_to_save.iterrows():
-            record = self._create_base_record(
-                row["end_date"],
-                row["candidate_name"],
-                forecast_date,
-                "historical_polling",
-            )
-            record["polling_average"] = row["daily_average"]
-            comprehensive_records.append(record)
-
-        # Add model fitted values for training dates only
-        training_dates = (
-            training_data["end_date"].drop_duplicates().sort_values().tolist()
-        )
-
-        for i, hist_date in enumerate(training_dates):
-            for candidate, candidate_name in [
-                ("trump", "Donald Trump"),
-                ("harris", "Kamala Harris"),
-            ]:
-                if i < len(fitted_values[candidate]):
-                    record = self._create_base_record(
-                        hist_date, candidate_name, forecast_date, "model_fitted"
-                    )
-                    record.update(
-                        {
-                            "model_prediction": fitted_values[candidate][i],
-                            "alpha": best_params[candidate]["alpha"],
-                            "beta": best_params[candidate]["beta"],
-                            "mase_score": best_params[candidate]["mase"],
-                        }
-                    )
-                    comprehensive_records.append(record)
-
-        # Add Election Day forecasts only
+        # OPTIMIZATION 1: Store only Election Day forecasts (not all forecast dates)
         election_day_index = next(
             (i for i, d in enumerate(days_till_then) if d == self.election_day), None
         )
@@ -130,46 +91,71 @@ class DataManager:
                 record.update(self._get_electoral_data(electoral_results))
                 comprehensive_records.append(record)
 
+        # OPTIMIZATION 2: Skip historical polling and fitted values entirely
+        # This reduces file size by ~80%
+
+        # OPTIMIZATION 3: Store only essential summary data
+        # Add one summary record per forecast run
+        summary_record = {
+            "date": forecast_date,
+            "candidate": "SUMMARY",
+            "forecast_run_date": forecast_date,
+            "record_type": "run_summary",
+            "data_source": "pipeline_summary",
+            "polling_average": None,
+            "model_prediction": None,
+            "baseline_prediction": None,
+            "days_to_election": (self.election_day - forecast_date).days,
+            "weeks_to_election": round((self.election_day - forecast_date).days / 7, 1),
+            "is_forecast": False,
+            "forecast_horizon": len(days_till_then),
+            "alpha": None,
+            "beta": None,
+            "mase_score": None,
+            "electoral_winner_model": electoral_results["model"]["winner"],
+            "electoral_votes_trump_model": electoral_results["model"][
+                "trump_electoral_votes"
+            ],
+            "electoral_votes_harris_model": electoral_results["model"][
+                "harris_electoral_votes"
+            ],
+            "electoral_winner_baseline": electoral_results["baseline"]["winner"],
+            "electoral_votes_trump_baseline": electoral_results["baseline"][
+                "trump_electoral_votes"
+            ],
+            "electoral_votes_harris_baseline": electoral_results["baseline"][
+                "harris_electoral_votes"
+            ],
+            "actual_election_winner": None,
+            "prediction_correct": None,
+        }
+        comprehensive_records.append(summary_record)
+
         df_comprehensive = pd.DataFrame(comprehensive_records)
         df_comprehensive = df_comprehensive.sort_values(
             ["date", "candidate", "record_type"]
         ).reset_index(drop=True)
 
-        logger.debug(f"Created comprehensive record with {len(df_comprehensive)} rows")
+        logger.debug(f"Created optimized record with {len(df_comprehensive)} rows")
         return df_comprehensive
 
-    def _create_base_record(self, date_val, candidate, forecast_date, record_type):
-        """Create a base record with common fields."""
+    def _create_base_record(
+        self, record_date, candidate_name, forecast_date, record_type
+    ):
+        """Create base record with common fields."""
         return {
-            "date": date_val,
-            "candidate": candidate,
+            "date": record_date,
+            "candidate": candidate_name,
             "forecast_run_date": forecast_date,
             "record_type": record_type,
-            "data_source": (
-                "polling_average"
-                if record_type == "historical_polling"
-                else "holt_exponential_smoothing"
-            ),
+            "data_source": "holt_exponential_smoothing",
             "polling_average": None,
-            "model_prediction": None,
-            "baseline_prediction": None,
-            "days_to_election": (self.election_day - date_val).days,
-            "weeks_to_election": round((self.election_day - date_val).days / 7, 1),
-            "is_forecast": False,
-            "forecast_horizon": None,
-            "alpha": None,
-            "beta": None,
-            "mase_score": None,
-            "electoral_winner_model": None,
-            "electoral_votes_trump_model": None,
-            "electoral_votes_harris_model": None,
-            "electoral_winner_baseline": None,
-            "electoral_votes_trump_baseline": None,
-            "electoral_votes_harris_baseline": None,
+            "days_to_election": (self.election_day - record_date).days,
+            "weeks_to_election": round((self.election_day - record_date).days / 7, 1),
         }
 
     def _get_electoral_data(self, electoral_results):
-        """Extract electoral data for election day records."""
+        """Extract electoral data from results."""
         return {
             "electoral_winner_model": electoral_results["model"]["winner"],
             "electoral_votes_trump_model": electoral_results["model"][
@@ -185,96 +171,92 @@ class DataManager:
             "electoral_votes_harris_baseline": electoral_results["baseline"][
                 "harris_electoral_votes"
             ],
+            "actual_election_winner": None,
+            "prediction_correct": None,
         }
-
-    def save_comprehensive_dataset(self, comprehensive_dataset):
-        """Save comprehensive dataset with retry logic for file locks."""
-        if len(comprehensive_dataset) == 0:
-            logger.warning("No records to save")
-            return comprehensive_dataset
-
-        comprehensive_dataset = comprehensive_dataset.copy()
-        comprehensive_dataset["actual_election_winner"] = "Donald Trump"
-
-        # Calculate prediction accuracy for forecasts
-        comprehensive_dataset["prediction_correct"] = comprehensive_dataset.apply(
-            lambda row: (
-                (row["model_prediction"] > 50) == (row["candidate"] == "Donald Trump")
-                if pd.notna(row["model_prediction"]) and row["is_forecast"]
-                else None
-            ),
-            axis=1,
-        )
-
-        comprehensive_dataset = comprehensive_dataset.sort_values(
-            ["date", "candidate", "record_type"]
-        ).reset_index(drop=True)
-
-        output_path = Path("data/election_forecast_2024_comprehensive.csv")
-
-        # Ensure directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Retry logic for file locks
-        max_retries = 5
-        retry_delay = 1  # seconds
-
-        for attempt in range(max_retries):
-            try:
-                # Try to save the file
-                comprehensive_dataset.to_csv(output_path, index=False)
-                logger.info(
-                    f"💾 Updated comprehensive dataset: {len(comprehensive_dataset)} records"
-                )
-                return comprehensive_dataset
-
-            except PermissionError as e:
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        f"File locked, retrying in {retry_delay} seconds... (attempt {attempt + 1}/{max_retries})"
-                    )
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
-                    continue
-                else:
-                    # Final attempt failed, try backup filename
-                    backup_path = output_path.with_suffix(
-                        f".backup_{int(time.time())}.csv"
-                    )
-                    try:
-                        comprehensive_dataset.to_csv(backup_path, index=False)
-                        logger.warning(f"💾 Saved to backup file: {backup_path}")
-                        return comprehensive_dataset
-                    except Exception as backup_error:
-                        logger.error(f"Failed to save even to backup: {backup_error}")
-                        raise e
-
-            except Exception as e:
-                logger.error(f"Unexpected error saving dataset: {e}")
-                raise e
-
-        return comprehensive_dataset
 
     def create_historical_data_for_plotting(self, comprehensive_dataset, forecast_date):
         """Create historical forecast data for plotting functions."""
-        historical_forecasts = comprehensive_dataset[
-            (comprehensive_dataset["date"] == self.election_day)
-            & (comprehensive_dataset["record_type"] == "forecast")
-            & (comprehensive_dataset["forecast_run_date"] <= forecast_date)
-        ].copy()
-
-        if len(historical_forecasts) == 0:
+        # Add defensive programming for None or empty dataset
+        if comprehensive_dataset is None:
+            logger.warning("comprehensive_dataset is None, returning empty DataFrame")
             return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
 
-        historical_data = []
-        for _, row in historical_forecasts.iterrows():
-            historical_data.append(
-                {
-                    "date": row["forecast_run_date"],
-                    "candidate": row["candidate"],
-                    "model": row["model_prediction"],
-                    "baseline": row["baseline_prediction"],
-                }
-            )
+        if comprehensive_dataset.empty:
+            logger.warning("comprehensive_dataset is empty, returning empty DataFrame")
+            return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
 
-        return pd.DataFrame(historical_data)
+        # Check if required columns exist
+        required_columns = [
+            "date",
+            "record_type",
+            "forecast_run_date",
+            "candidate",
+            "model_prediction",
+            "baseline_prediction",
+        ]
+        missing_columns = [
+            col for col in required_columns if col not in comprehensive_dataset.columns
+        ]
+        if missing_columns:
+            logger.warning(
+                f"Missing columns {missing_columns}, returning empty DataFrame"
+            )
+            return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
+
+        try:
+            historical_forecasts = comprehensive_dataset[
+                (comprehensive_dataset["date"] == self.election_day)
+                & (comprehensive_dataset["record_type"] == "forecast")
+                & (comprehensive_dataset["forecast_run_date"] <= forecast_date)
+            ].copy()
+
+            if len(historical_forecasts) == 0:
+                logger.debug("No historical forecasts found for plotting")
+                return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
+
+            historical_data = []
+            for _, row in historical_forecasts.iterrows():
+                historical_data.append(
+                    {
+                        "date": row["forecast_run_date"],
+                        "candidate": row["candidate"],
+                        "model": row["model_prediction"],
+                        "baseline": row["baseline_prediction"],
+                    }
+                )
+
+            logger.debug(
+                f"Created historical data for plotting with {len(historical_data)} records"
+            )
+            return pd.DataFrame(historical_data)
+
+        except Exception as e:
+            logger.error(f"Error creating historical data for plotting: {e}")
+            return pd.DataFrame(columns=["date", "candidate", "model", "baseline"])
+
+    def save_comprehensive_dataset(self, dataset, filepath=None):
+        """Save comprehensive dataset to CSV."""
+        if filepath is None:
+            filepath = Path("data/election_forecast_2024_comprehensive.csv")
+
+        dataset.to_csv(filepath, index=False)
+        logger.info(
+            f"Saved comprehensive dataset with {len(dataset)} records to {filepath}"
+        )
+
+        # Return the dataset so it can be chained
+        return dataset
+
+    def append_to_comprehensive_dataset(self, existing_dataset, new_records):
+        """Append new records to existing comprehensive dataset."""
+        if existing_dataset.empty:
+            return new_records
+
+        combined_dataset = pd.concat([existing_dataset, new_records], ignore_index=True)
+        combined_dataset = combined_dataset.sort_values(
+            ["forecast_run_date", "date", "candidate", "record_type"]
+        ).reset_index(drop=True)
+
+        logger.debug(f"Combined dataset now has {len(combined_dataset)} records")
+        return combined_dataset

@@ -51,7 +51,7 @@ class ForecastRunner:
         comprehensive_dataset = self.data_manager.load_or_create_comprehensive_dataset()
 
         if self.verbose:
-            logger.info(f"\n🔮 STARTING ROLLING FORECASTS")
+            logger.info("\n🔮 STARTING ROLLING FORECASTS")
             logger.info("-" * 40)
 
         logger.info(
@@ -149,7 +149,7 @@ class ForecastRunner:
         ].copy()
 
         if len(trump_train) < 10 or len(harris_train) < 10:
-            logger.warning(f"Insufficient training data, skipping")
+            logger.warning("Insufficient training data, skipping")
             return None
 
         if self.verbose:
@@ -193,7 +193,6 @@ class ForecastRunner:
     ):
         """Execute the forecasting models."""
         days_to_election = (self.election_day - forecast_date).days
-
         logger.info(f"Forecasting {days_to_election} days until election")
 
         # Train models
@@ -283,7 +282,13 @@ class ForecastRunner:
             holdout_baselines,
         )
 
-        return {
+        # Debug logging
+        if self.debug:
+            logger.debug(
+                f"Plotting data prepared with keys: {list(plotting_data.keys())}"
+            )
+
+        forecast_results = {
             "trump_train": trump_train,
             "harris_train": harris_train,
             "fitted_values": fitted_values,
@@ -294,15 +299,22 @@ class ForecastRunner:
             "electoral_results": electoral_results,
             "best_params": best_params,
             "train_cutoff_date": train_cutoff_date,
-            "forecaster": forecaster,  # Keep reference for debug plots
+            "forecaster": forecaster,
             **plotting_data,
         }
+
+        # Debug logging
+        if self.debug:
+            logger.debug(
+                f"Final forecast_results keys: {list(forecast_results.keys())}"
+            )
+
+        return forecast_results
 
     def _run_linearity_diagnostics(
         self, forecaster, fitted_models, predictions, horizon, forecast_date
     ):
         """Run comprehensive linearity diagnostics in debug mode."""
-
         # Quick linearity check for both candidates
         for candidate in ["trump", "harris"]:
             forecast_values = predictions[candidate]
@@ -338,19 +350,17 @@ class ForecastRunner:
 
             # Generate debug plots for this forecast date
             forecaster.plot_forecast_debug(
-                forecaster.fitted_models["trump"].model.endog,  # Historical data
+                forecaster.fitted_models["trump"].model.endog,
                 fitted_models["trump"],
-                predictions["trump"][: min(horizon, 13)],  # Limit to reasonable horizon
+                predictions["trump"][: min(horizon, 13)],
                 forecast_date,
                 "Trump",
             )
 
             forecaster.plot_forecast_debug(
-                forecaster.fitted_models["harris"].model.endog,  # Historical data
+                forecaster.fitted_models["harris"].model.endog,
                 fitted_models["harris"],
-                predictions["harris"][
-                    : min(horizon, 13)
-                ],  # Limit to reasonable horizon
+                predictions["harris"][: min(horizon, 13)],
                 forecast_date,
                 "Harris",
             )
@@ -375,7 +385,6 @@ class ForecastRunner:
 
         except Exception as e:
             logger.warning(f"Detailed diagnostics failed: {e}")
-            # Continue with pipeline even if diagnostics fail
 
     def _log_holdout_performance(
         self, holdout_predictions, trump_holdout, harris_holdout
@@ -464,20 +473,33 @@ class ForecastRunner:
         holdout_baselines,
     ):
         """Prepare data for plotting functions."""
-        # Create complete historical datasets
-        trump_complete = pd.concat(
-            [trump_train, trump_holdout], ignore_index=True
-        ).sort_values("end_date")
-        harris_complete = pd.concat(
-            [harris_train, harris_holdout], ignore_index=True
-        ).sort_values("end_date")
+        # Create complete historical datasets with proper DataFrame handling
+        trump_dfs = [df for df in [trump_train, trump_holdout] if not df.empty]
+        harris_dfs = [df for df in [harris_train, harris_holdout] if not df.empty]
 
-        trump_complete = trump_complete.drop_duplicates(
-            subset=["end_date"], keep="first"
-        ).reset_index(drop=True)
-        harris_complete = harris_complete.drop_duplicates(
-            subset=["end_date"], keep="first"
-        ).reset_index(drop=True)
+        if trump_dfs:
+            trump_complete = pd.concat(trump_dfs, ignore_index=True).sort_values(
+                "end_date"
+            )
+        else:
+            trump_complete = pd.DataFrame()
+
+        if harris_dfs:
+            harris_complete = pd.concat(harris_dfs, ignore_index=True).sort_values(
+                "end_date"
+            )
+        else:
+            harris_complete = pd.DataFrame()
+
+        # Remove duplicates
+        if not trump_complete.empty:
+            trump_complete = trump_complete.drop_duplicates(
+                subset=["end_date"], keep="first"
+            ).reset_index(drop=True)
+        if not harris_complete.empty:
+            harris_complete = harris_complete.drop_duplicates(
+                subset=["end_date"], keep="first"
+            ).reset_index(drop=True)
 
         # Create complete fitted values
         complete_fitted_values = {
@@ -488,18 +510,28 @@ class ForecastRunner:
 
         # Ensure fitted values match dataset lengths
         complete_fitted_values = {
-            "trump": complete_fitted_values["trump"][: len(trump_complete)],
-            "harris": complete_fitted_values["harris"][: len(harris_complete)],
+            "trump": (
+                complete_fitted_values["trump"][: len(trump_complete)]
+                if not trump_complete.empty
+                else []
+            ),
+            "harris": (
+                complete_fitted_values["harris"][: len(harris_complete)]
+                if not harris_complete.empty
+                else []
+            ),
         }
 
-        historical_dates = sorted(
-            set(
-                trump_complete["end_date"].tolist()
-                + harris_complete["end_date"].tolist()
-            )
-        )
+        # Create historical dates - ensure we always have dates even if DataFrames are empty
+        historical_dates = []
+        if not trump_complete.empty:
+            historical_dates.extend(trump_complete["end_date"].tolist())
+        if not harris_complete.empty:
+            historical_dates.extend(harris_complete["end_date"].tolist())
 
-        return {
+        historical_dates = sorted(set(historical_dates)) if historical_dates else []
+
+        plotting_data = {
             "trump_complete": trump_complete,
             "harris_complete": harris_complete,
             "complete_fitted_values": complete_fitted_values,
@@ -507,6 +539,13 @@ class ForecastRunner:
             "plotting_days_till_then": forecast_dates_list,
             "plotting_holdout_baselines": holdout_baselines,
         }
+
+        # Debug logging
+        if self.debug:
+            logger.debug(f"Plotting data keys: {list(plotting_data.keys())}")
+            logger.debug(f"Historical dates count: {len(historical_dates)}")
+
+        return plotting_data
 
     def _update_and_visualize(
         self,
@@ -519,10 +558,19 @@ class ForecastRunner:
         # Update comprehensive dataset
         logger.info("Updating comprehensive dataset...")
 
-        training_data = pd.concat(
-            [forecast_results["trump_train"], forecast_results["harris_train"]],
-            ignore_index=True,
-        )
+        # Safely combine training data
+        train_dfs = [
+            df
+            for df in [
+                forecast_results["trump_train"],
+                forecast_results["harris_train"],
+            ]
+            if not df.empty
+        ]
+        if train_dfs:
+            training_data = pd.concat(train_dfs, ignore_index=True)
+        else:
+            training_data = pd.DataFrame()
 
         daily_forecast_record = self.data_manager.create_comprehensive_forecast_record(
             training_data,
@@ -538,20 +586,27 @@ class ForecastRunner:
         )
 
         # Remove existing records for this forecast date
-        if len(comprehensive_dataset) > 0:
+        if not comprehensive_dataset.empty:
             comprehensive_dataset = comprehensive_dataset[
                 comprehensive_dataset["forecast_run_date"] != forecast_date
             ].copy()
 
-        # Add new records
-        if len(comprehensive_dataset) == 0:
+        # Add new records with proper empty DataFrame handling
+        if comprehensive_dataset.empty:
             comprehensive_dataset = daily_forecast_record
         else:
-            comprehensive_dataset = pd.concat(
-                [comprehensive_dataset, daily_forecast_record], ignore_index=True
-            )
+            # Filter out empty DataFrames to fix FutureWarning
+            dfs_to_concat = [
+                df
+                for df in [comprehensive_dataset, daily_forecast_record]
+                if not df.empty
+            ]
+            if dfs_to_concat:
+                comprehensive_dataset = pd.concat(dfs_to_concat, ignore_index=True)
+            else:
+                comprehensive_dataset = daily_forecast_record
 
-        # Save dataset
+        # Save dataset (this now returns the dataset)
         comprehensive_dataset = self.data_manager.save_comprehensive_dataset(
             comprehensive_dataset
         )

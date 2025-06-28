@@ -21,21 +21,23 @@ def main():
 
     # Show startup information
     if args.verbose:
-        logger.info("🚀 ROLLING ELECTION FORECAST 2024 PIPELINE")
+        logger.info("US presidential election 2024 forecast")
         logger.info("=" * 60)
-        logger.info("This pipeline generates daily forecasts for the 2024 election")
+        logger.info("This pipeline generates daily forecasts for the 2024 election.")
         logger.info(
-            "Each day uses only polling data available up to that point (no future leakage)"
+            "Each day uses only polling data available up to that point (no future leakage)."
         )
         logger.info(
-            "Models: Holt exponential smoothing with hyperparameter optimization"
+            "Models: Holt exponential smoothing with hyperparameter optimization and random walk with drift baseline."
         )
         logger.info(
-            "Outputs: Single comprehensive CSV + daily forecast images + historical plots"
+            "Outputs: Comprehensive CSV storing previous forecasts, daily average cache file for quicker processing, images for current forecast and history of forecasts."
         )
         logger.info("=" * 60)
-    elif not args.debug:
-        print("Running rolling election forecasts...")
+    elif args.debug:
+        logger.debug("Starting election forecast pipeline in debug mode")
+    else:
+        print("Running election forecast(s)...")
 
     # Determine which dates to process
     try:

@@ -4,6 +4,12 @@
 import logging
 
 
+# src/utils/logging_setup.py
+"""Logging configuration utilities."""
+
+import logging
+
+
 def setup_logging(verbose=False, debug=False):
     """Setup logging with appropriate level for main.py and all src/ modules."""
     if debug:
@@ -22,17 +28,36 @@ def setup_logging(verbose=False, debug=False):
     logging.basicConfig(level=root_level, format=format_str, force=True)
 
     if debug:
-        logging.getLogger(__name__).setLevel(your_level)
-        logging.getLogger("src").setLevel(your_level)
-        logging.getLogger("src.data").setLevel(your_level)
-        logging.getLogger("src.models").setLevel(your_level)
-        logging.getLogger("src.visualization").setLevel(your_level)
-        logging.getLogger("src.pipeline").setLevel(your_level)
-        logging.getLogger("src.utils").setLevel(your_level)
+        # Set debug level for application-specific modules
+        app_modules = [
+            __name__,
+            "src",
+            "src.data",
+            "src.models",
+            "src.visualization",
+            "src.pipeline",
+            "src.utils",
+        ]
 
-        # Silence noisy third-party libraries
-        logging.getLogger("matplotlib").setLevel(logging.WARNING)
-        logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
-        logging.getLogger("PIL").setLevel(logging.WARNING)
+        for module in app_modules:
+            logging.getLogger(module).setLevel(your_level)
+
+        # Silence noisy third-party libraries efficiently
+        noisy_loggers = [
+            "matplotlib",
+            "matplotlib.font_manager",
+            "matplotlib.pyplot",
+            "PIL",
+            "pandas",
+            "statsmodels",
+            "sklearn",
+            "seaborn",
+            # "urllib3",
+            # "requests",
+            "numpy",
+        ]
+
+        for logger_name in noisy_loggers:
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
 
     return logging.getLogger(__name__)

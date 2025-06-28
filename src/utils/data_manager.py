@@ -31,14 +31,8 @@ class DataManager:
         if dataset_path.exists():
             logger.info("Loading existing streamlined comprehensive dataset...")
 
-            # Streamlined dtypes - only essential string columns
-            dtype_dict = {
-                "candidate": "string",
-                "electoral_winner_model": "string",
-                "electoral_winner_baseline": "string",
-            }
-
-            df = pd.read_csv(dataset_path, dtype=dtype_dict, low_memory=False)
+            # Load with low_memory=False for better type inference
+            df = pd.read_csv(dataset_path, low_memory=False)
             df["forecast_date"] = pd.to_datetime(df["forecast_date"]).dt.date
 
             logger.info(

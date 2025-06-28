@@ -142,9 +142,9 @@ class PollingDataCollector:
         )
         return combined_averages
 
-    def load_data_for_incremental_pipeline(self, target_date=None) -> pd.DataFrame:
-        """Main method to load data for incremental pipeline - compatibility wrapper."""
-        return self.load_incremental_data(target_date)
+    # def load_data_for_incremental_pipeline(self, target_date=None) -> pd.DataFrame:
+    #     """Main method to load data for incremental pipeline - compatibility wrapper."""
+    #     return self.load_incremental_data(target_date)
 
     def _extract_existing_daily_averages_optimized(
         self, comprehensive_path, needed_dates
@@ -183,6 +183,6 @@ class PollingDataCollector:
             drop=True
         )
 
-    def _extract_existing_daily_averages(self, comprehensive_path) -> pd.DataFrame:
-        """Legacy method - kept for compatibility."""
-        return self._extract_existing_daily_averages_optimized(comprehensive_path, [])
+    # def _extract_existing_daily_averages(self, comprehensive_path) -> pd.DataFrame:
+    #     """Legacy method - kept for compatibility."""
+    #     return self._extract_existing_daily_averages_optimized(comprehensive_path, [])

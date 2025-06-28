@@ -259,15 +259,15 @@ class DataManager:
         # Return the dataset so it can be chained
         return dataset
 
-    def append_to_comprehensive_dataset(self, existing_dataset, new_records):
-        """Append new records to existing comprehensive dataset."""
-        if existing_dataset.empty:
-            return new_records
+    # def append_to_comprehensive_dataset(self, existing_dataset, new_records):
+    #     """Append new records to existing comprehensive dataset."""
+    #     if existing_dataset.empty:
+    #         return new_records
 
-        combined_dataset = pd.concat([existing_dataset, new_records], ignore_index=True)
-        combined_dataset = combined_dataset.sort_values(
-            ["forecast_run_date", "date", "candidate", "record_type"]
-        ).reset_index(drop=True)
+    #     combined_dataset = pd.concat([existing_dataset, new_records], ignore_index=True)
+    #     combined_dataset = combined_dataset.sort_values(
+    #         ["forecast_run_date", "date", "candidate", "record_type"]
+    #     ).reset_index(drop=True)
 
-        logger.debug(f"Combined dataset now has {len(combined_dataset)} records")
-        return combined_dataset
+    #     logger.debug(f"Combined dataset now has {len(combined_dataset)} records")
+    #     return combined_dataset

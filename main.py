@@ -76,9 +76,12 @@ def main():
         )
 
     # Create output directories
-    Path(data_config.forecast_images_dir).mkdir(parents=True, exist_ok=True)
-    Path("outputs").mkdir(parents=True, exist_ok=True)
-    Path("data").mkdir(parents=True, exist_ok=True)
+    Path(data_config.forecast_images_dir).mkdir(
+        parents=True, exist_ok=True
+    )  # outputs/forecast_images
+    Path("outputs/previous_forecasts").mkdir(
+        parents=True, exist_ok=True
+    )  # outputs/previous_forecasts
 
     # Run the forecasting pipeline
     runner = ForecastRunner(model_config, data_config, args.verbose, args.debug)

@@ -43,14 +43,21 @@ class ResultFormatter:
             logger.error(f"❌ Failed forecast for {forecast_date}: {error}")
 
     def log_forecast_results(self, forecast_results, forecast_date, election_day):
-        """Log the results of a forecast."""
+        """Log the results of a forecast, including both model and baseline predictions."""
         electoral_results = forecast_results["electoral_results"]
-        trump_pct = electoral_results["model"]["trump_vote_pct"]
-        harris_pct = electoral_results["model"]["harris_vote_pct"]
+
+        # Log popular vote predictions for both model and baseline
+        model_trump_pct = electoral_results["model"]["trump_vote_pct"]
+        model_harris_pct = electoral_results["model"]["harris_vote_pct"]
+        baseline_trump_pct = electoral_results["baseline"]["trump_vote_pct"]
+        baseline_harris_pct = electoral_results["baseline"]["harris_vote_pct"]
 
         prefix = "   📊" if self.verbose else "  "
         logger.info(
-            f"{prefix} Model prediction: Trump {trump_pct:.1f}%, Harris {harris_pct:.1f}%"
+            f"{prefix} Model prediction: Trump {model_trump_pct:.1f}%, Harris {model_harris_pct:.1f}%"
+        )
+        logger.info(
+            f"{prefix} Baseline prediction: Trump {baseline_trump_pct:.1f}%, Harris {baseline_harris_pct:.1f}%"
         )
 
         if forecast_date == date(2024, 11, 5):
@@ -61,18 +68,47 @@ class ResultFormatter:
             )
 
     def _log_electoral_results(self, electoral_results):
-        """Log detailed electoral college results."""
+        """Log detailed electoral college results for both model and baseline."""
+        prefix = "   🏆" if self.verbose else "  "
+
+        # Log Model Results
         model = electoral_results["model"]
-        winner = model["winner"]
-        winner_evs = (
+        model_winner = model["winner"]
+        model_winner_evs = (
             model["trump_electoral_votes"]
-            if winner == "Trump"
+            if model_winner == "Trump"
             else model["harris_electoral_votes"]
         )
 
-        trump_swing = max(0, model["trump_electoral_votes"] - 219)
-        harris_swing = max(0, model["harris_electoral_votes"] - 226)
+        logger.info(
+            f"{prefix} MODEL Electoral outcome: {model_winner} wins with {model_winner_evs} electoral votes"
+        )
+        self._log_state_allocations(model, "MODEL", prefix)
 
+        # Log Baseline Results
+        baseline = electoral_results["baseline"]
+        baseline_winner = baseline["winner"]
+        baseline_winner_evs = (
+            baseline["trump_electoral_votes"]
+            if baseline_winner == "Trump"
+            else baseline["harris_electoral_votes"]
+        )
+
+        logger.info(
+            f"{prefix} BASELINE Electoral outcome: {baseline_winner} wins with {baseline_winner_evs} electoral votes"
+        )
+        self._log_state_allocations(baseline, "BASELINE", prefix)
+
+        # Log comparison if different
+        if model_winner != baseline_winner:
+            logger.info(f"{prefix} ⚠️  MODEL and BASELINE predict different winners!")
+        elif model["trump_electoral_votes"] != baseline["trump_electoral_votes"]:
+            logger.info(f"{prefix} ℹ️  Same winner, different electoral vote counts")
+        else:
+            logger.info(f"{prefix} ✅ MODEL and BASELINE predictions agree completely")
+
+    def _log_state_allocations(self, results, prediction_type, prefix):
+        """Log state allocations for a given prediction (model or baseline)."""
         state_names = {
             "AZ": "Arizona (11)",
             "GA": "Georgia (16)",
@@ -83,17 +119,19 @@ class ResultFormatter:
             "MI": "Michigan (15)",
         }
 
-        prefix = "   🏆" if self.verbose else "  "
-        logger.info(
-            f"{prefix} Electoral outcome: {winner} wins with {winner_evs} electoral votes"
-        )
+        trump_swing = max(0, results["trump_electoral_votes"] - 219)
+        harris_swing = max(0, results["harris_electoral_votes"] - 226)
 
-        # Log state allocations
         for candidate, states_key, total_evs, swing_evs in [
-            ("Trump", "trump_states", model["trump_electoral_votes"], trump_swing),
-            ("Harris", "harris_states", model["harris_electoral_votes"], harris_swing),
+            ("Trump", "trump_states", results["trump_electoral_votes"], trump_swing),
+            (
+                "Harris",
+                "harris_states",
+                results["harris_electoral_votes"],
+                harris_swing,
+            ),
         ]:
-            states = model[states_key]
+            states = results[states_key]
             state_details = (
                 [state_names.get(state, state) for state in states]
                 if states
@@ -102,6 +140,8 @@ class ResultFormatter:
 
             safe_votes = 219 if candidate == "Trump" else 226
             logger.info(
-                f"      {candidate}: {total_evs} total = {safe_votes} safe + {swing_evs} swing"
+                f"      {prediction_type} {candidate}: {total_evs} total = {safe_votes} safe + {swing_evs} swing"
             )
-            logger.info(f"      {candidate} swing states: {', '.join(state_details)}")
+            logger.info(
+                f"      {prediction_type} {candidate} swing states: {', '.join(state_details)}"
+            )

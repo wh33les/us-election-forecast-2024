@@ -27,14 +27,14 @@ class ForecastRunner:
         self.data_config = data_config
         self.verbose = verbose
         self.debug = debug
-        self.election_day = self.data_config.election_day_parsed
+        self.election_day = datetime(2024, 11, 5).date()
 
         # Initialize components
         self.collector = PollingDataCollector(data_config)
-        self.processor = PollingDataProcessor(model_config)
+        self.processor = PollingDataProcessor(data_config)
         self.calculator = ElectoralCollegeCalculator(model_config)
         self.plotter = ElectionPlotter(data_config)
-        self.data_manager = DataManager()
+        self.data_manager = DataManager(data_config)
         self.formatter = ResultFormatter(verbose, debug)
 
     def run_forecasts(self, forecast_dates: List[date]) -> bool:
@@ -106,7 +106,7 @@ class ForecastRunner:
         raw_data = self.collector.load_raw_data()
 
         # Filter to Biden drop-out date and later
-        biden_out = self.data_config.biden_dropout_date_parsed
+        biden_out = datetime(2024, 7, 21).date()
         raw_data = raw_data[raw_data["end_date"] >= biden_out]
         logger.info(
             f"Filtered to data from {biden_out} onwards: {len(raw_data)} records"

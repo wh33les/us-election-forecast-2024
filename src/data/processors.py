@@ -11,17 +11,17 @@ logger = logging.getLogger(__name__)
 class PollingDataProcessor:
     """Handles cleaning and processing of polling data."""
 
-    def __init__(self, config):
-        """Initialize with configuration."""
-        self.config = config
+    def __init__(self, data_config):
+        """Initialize with data configuration."""
+        self.config = data_config
 
     def filter_polling_data(self, raw_data: pd.DataFrame) -> pd.DataFrame:
         """Filter polling data based on configuration criteria."""
         logger.info("Filtering polling data...")
 
-        # Extract relevant columns and candidates
+        # Extract relevant columns and candidates - UPDATED: Use config
         df = raw_data.loc[
-            (raw_data["candidate_name"].isin(["Donald Trump", "Kamala Harris"]))
+            (raw_data["candidate_name"].isin(self.config.candidates))
             & (raw_data["population"] == "lv"),  # likely voters only
             ["pollscore", "state", "candidate_name", "end_date", "pct"],
         ].drop_duplicates()

@@ -11,7 +11,7 @@ from pathlib import Path
 from src.config import ModelConfig, DataConfig
 from src.pipeline.runner import ForecastRunner
 from src.utils.logging_setup import setup_logging
-from src.utils.date_parser import parse_arguments, determine_forecast_dates
+from src.utils.cli_parser import parse_arguments, determine_forecast_dates
 
 
 def main():

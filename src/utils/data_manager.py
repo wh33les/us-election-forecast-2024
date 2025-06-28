@@ -15,7 +15,9 @@ class DataManager:
     """Handles loading, creating, and saving comprehensive datasets."""
 
     def __init__(self, data_config=None):
-        self.election_day = date(2024, 11, 5)
+        self.election_day = (
+            data_config.election_day_parsed if data_config else date(2024, 11, 5)
+        )
         self.data_config = data_config  # Add config support
 
     def load_or_create_comprehensive_dataset(self):

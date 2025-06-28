@@ -64,7 +64,7 @@ class PollingDataCollector:
                 )
 
         # Determine target date range
-        biden_dropout = pd.to_datetime(self.config.biden_dropout_date).date()
+        biden_dropout = self.config.biden_dropout_date_parsed
         target_date_obj = (
             pd.to_datetime(target_date).date()
             if target_date

@@ -1,4 +1,7 @@
 date,candidate,forecast_run_date,record_type,data_source,polling_average,days_to_election,weeks_to_election,model_prediction,baseline_prediction,is_forecast,forecast_horizon,alpha,beta,mase_score,electoral_winner_model,electoral_votes_trump_model,electoral_votes_harris_model,electoral_winner_baseline,electoral_votes_trump_baseline,electoral_votes_harris_baseline,actual_election_winner,prediction_correct
 2024-10-25,SUMMARY,2024-10-25,run_summary,pipeline_summary,,11,1.6,,,False,12,,,,N/A (interim forecast),,,N/A (interim forecast),,,,
 2024-11-05,Donald Trump,2024-10-25,forecast,holt_exponential_smoothing,,0,0.0,47.57605493944967,48.85200642054574,True,12,0.1,0.1,0.7677363351589321,N/A (interim forecast),,,N/A (interim forecast),,,,
-2024-11-05,Kamala Harris,2024-10-25,forecast,holt_exponential_smoothing,,0,0.0,48.63752282919381,49.07865168539326,True,12,0.1,0.30000000000000004,0.5493094679290622,N/A (interim forecast),,,N/A (interim forecast),,,,
+2024-11-05,Kamala Harris,2024-10-25,forecast,holt_exponential_smoothing,,0,0.0,48.63752282919381,49.07865168539326,True,12,0.1,0.3,0.5493094679290622,N/A (interim forecast),,,N/A (interim forecast),,,,
+2024-10-23,SUMMARY,2024-10-23,run_summary,pipeline_summary,,13,1.9,,,False,14,,,,N/A (interim forecast),,,N/A (interim forecast),,,,
+2024-11-05,Donald Trump,2024-10-23,forecast,holt_exponential_smoothing,,0,0.0,47.78868500608549,47.17422867513611,True,14,0.30000000000000004,0.1,0.7395062310565139,N/A (interim forecast),,,N/A (interim forecast),,,,
+2024-11-05,Kamala Harris,2024-10-23,forecast,holt_exponential_smoothing,,0,0.0,48.79364867867395,48.95009074410163,True,14,0.2,0.1,0.5462382284573561,N/A (interim forecast),,,N/A (interim forecast),,,,

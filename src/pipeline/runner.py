@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from src.data.collectors import PollingDataCollector
 from src.data.processors import PollingDataProcessor
@@ -37,7 +37,7 @@ class ForecastRunner:
         self.data_manager = DataManager(data_config)
         self.formatter = ResultFormatter(verbose, debug)
 
-    def run_forecasts(self, forecast_dates: List[date]) -> bool:
+    def run_forecasts(self, forecast_dates: Sequence[date]) -> bool:
         """Run forecasts for all specified dates."""
         logger.info("Starting Rolling Election Forecast 2024 pipeline...")
 
@@ -174,12 +174,15 @@ class ForecastRunner:
         fitted_models = forecaster.fit_final_models(trump_train, harris_train)
 
         # Calculate horizons
+        # pylint: disable=no-member  # False positive: DatetimeIndex.date is valid but pylint doesn't recognize it
         holdout_dates = pd.date_range(
             start=train_cutoff_date, end=forecast_date, inclusive="left"
         ).date
+
         forecast_dates_list = pd.date_range(
             start=forecast_date, end=self.election_day, inclusive="both"
         ).date.tolist()
+        # pylint: enable=no-member
 
         holdout_horizon = len(holdout_dates)
         total_horizon = holdout_horizon + len(forecast_dates_list)

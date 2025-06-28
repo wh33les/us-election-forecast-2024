@@ -4,6 +4,7 @@
 import argparse
 import pandas as pd
 from datetime import datetime, date
+from typing import Optional, List
 
 
 def parse_arguments():
@@ -48,10 +49,11 @@ Examples:
     return parser.parse_args()
 
 
-def parse_flexible_date(date_string):
+def parse_flexible_date(date_string: str) -> date:
     """Parse flexible date formats, defaulting to 2024."""
-    if not date_string:
-        return None
+    # Remove the None check since we now require a valid string
+    if not date_string or not date_string.strip():
+        raise ValueError("Date string cannot be empty")
 
     formats_to_try = [
         "%Y-%m-%d",  # 2024-10-25
@@ -96,26 +98,30 @@ def parse_flexible_date(date_string):
         except ValueError:
             continue
 
+    # If we get here, nothing worked - raise an exception instead of returning None
     raise ValueError(
         f"Could not parse date '{date_string}'. Try formats like: 2024-10-25, 10-25, Oct 25"
     )
 
 
-def determine_forecast_dates(args):
+def determine_forecast_dates(args) -> List[date]:
     """Determine which dates to process based on command line arguments."""
     default_start = date(2024, 10, 23)
     default_end = date(2024, 11, 5)
 
     if args.date:
+        # No need to check for None - parse_flexible_date raises if invalid
         return [parse_flexible_date(args.date)]
 
     if args.start or args.end:
+        # Parse start and end dates - only call parse_flexible_date if we have a string
         start_date = parse_flexible_date(args.start) if args.start else default_start
         end_date = parse_flexible_date(args.end) if args.end else default_end
 
+        # Now we can safely compare - both are guaranteed to be date objects
         if start_date > end_date:
             raise ValueError(f"Start date {start_date} is after end date {end_date}")
 
-        return pd.date_range(start=start_date, end=end_date).date
+        return pd.date_range(start=start_date, end=end_date).date.tolist()
 
-    return pd.date_range(start=default_start, end=default_end).date
+    return pd.date_range(start=default_start, end=default_end).date.tolist()

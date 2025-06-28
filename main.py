@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+# main.py
 """
 Rolling election forecast pipeline - matches original methodology.
 For each day Oct 23 - Nov 5, uses only data available up to that day.
 """
 
-import argparse
-import logging
+# import argparse
+# import logging
 from pathlib import Path
 
 from src.config import ModelConfig, DataConfig

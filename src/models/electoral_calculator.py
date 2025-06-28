@@ -22,9 +22,10 @@ class ElectoralCollegeCalculator:
             "WI": 10,
             "MI": 15,
         }
-        self.trump_safe_votes = 219
-        self.harris_safe_votes = 226
-        self.total_swing_votes = 93
+        # UPDATED: Use config instead of hardcoded values
+        self.trump_safe_votes = config.trump_safe_electoral_votes
+        self.harris_safe_votes = config.harris_safe_electoral_votes
+        self.total_swing_votes = config.swing_state_electoral_votes
 
     def extract_final_predictions(
         self, df_cleaned: pd.DataFrame

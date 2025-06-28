@@ -46,6 +46,11 @@ class DataConfig:
         "outputs/forecast_images"  # Changed to match your original
     )
 
+    # NEW: Additional file paths
+    debug_plots_dir: str = "outputs/debug_plots"
+    comprehensive_dataset_path: str = "data/election_forecast_2024_comprehensive.csv"
+    historical_plots_dir: str = "outputs/previous_forecasts"
+
     # Data filtering criteria
     candidates: List[str] = None
     population_filter: str = "lv"  # likely voters

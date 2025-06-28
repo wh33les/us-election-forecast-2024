@@ -14,12 +14,17 @@ logger = logging.getLogger(__name__)
 class DataManager:
     """Handles loading, creating, and saving comprehensive datasets."""
 
-    def __init__(self):
+    def __init__(self, data_config=None):
         self.election_day = date(2024, 11, 5)
+        self.data_config = data_config  # Add config support
 
     def load_or_create_comprehensive_dataset(self):
         """Load existing comprehensive dataset or create new one - OPTIMIZED."""
-        dataset_path = Path("data/election_forecast_2024_comprehensive.csv")
+        # Use config path if available, otherwise fallback to hardcoded path
+        if self.data_config:
+            dataset_path = Path(self.data_config.comprehensive_dataset_path)
+        else:
+            dataset_path = Path("data/election_forecast_2024_comprehensive.csv")
 
         if dataset_path.exists():
             logger.info("Loading existing comprehensive dataset...")
@@ -238,7 +243,11 @@ class DataManager:
     def save_comprehensive_dataset(self, dataset, filepath=None):
         """Save comprehensive dataset to CSV."""
         if filepath is None:
-            filepath = Path("data/election_forecast_2024_comprehensive.csv")
+            # Use config path if available, otherwise fallback to hardcoded path
+            if self.data_config:
+                filepath = Path(self.data_config.comprehensive_dataset_path)
+            else:
+                filepath = Path("data/election_forecast_2024_comprehensive.csv")
 
         dataset.to_csv(filepath, index=False)
         logger.info(

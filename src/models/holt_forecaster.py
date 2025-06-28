@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 class HoltElectionForecaster:
     """Holt exponential smoothing forecaster for election polling data."""
 
-    def __init__(self, config):
+    def __init__(self, model_config, data_config=None):
         """Initialize with model configuration."""
-        self.config = config
+        self.model_config = model_config
+        self.data_config = data_config  # Add data_config
         self.fitted_models = {}
         self.best_params = {}
 
@@ -52,17 +53,17 @@ class HoltElectionForecaster:
         """Perform grid search for optimal Holt smoothing parameters."""
         logger.info("Starting hyperparameter grid search...")
 
-        grid_numbers = self.config.grid_numbers
+        grid_numbers = self.model_config.grid_numbers
         kfold = TimeSeriesSplit(
-            n_splits=self.config.n_splits, test_size=self.config.test_size
+            n_splits=self.model_config.n_splits, test_size=self.model_config.test_size
         )
 
         # Initialize error arrays
         exp_mase_trump = np.zeros(
-            (self.config.n_splits, len(grid_numbers), len(grid_numbers))
+            (self.model_config.n_splits, len(grid_numbers), len(grid_numbers))
         )
         exp_mase_harris = np.zeros(
-            (self.config.n_splits, len(grid_numbers), len(grid_numbers))
+            (self.model_config.n_splits, len(grid_numbers), len(grid_numbers))
         )
 
         split_idx = 0
@@ -378,8 +379,12 @@ class HoltElectionForecaster:
 
         plt.tight_layout()
 
-        # Save debug plot
-        debug_path = f'outputs/debug_plots/forecast_debug_{candidate_name}_{forecast_date.strftime("%m%d")}.png'
+        # Save debug plot - Use data_config if available, otherwise fallback
+        if self.data_config:
+            debug_path = f'{self.data_config.debug_plots_dir}/forecast_debug_{candidate_name}_{forecast_date.strftime("%m%d")}.png'
+        else:
+            debug_path = f'outputs/debug_plots/forecast_debug_{candidate_name}_{forecast_date.strftime("%m%d")}.png'
+
         os.makedirs(os.path.dirname(debug_path), exist_ok=True)
         plt.savefig(debug_path, dpi=150, bbox_inches="tight")
         plt.close()

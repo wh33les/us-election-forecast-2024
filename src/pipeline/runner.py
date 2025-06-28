@@ -42,7 +42,9 @@ class ForecastRunner:
         logger.info("Starting Rolling Election Forecast 2024 pipeline...")
 
         # Determine loading strategy
-        comprehensive_path = Path("data/election_forecast_2024_comprehensive.csv")
+        comprehensive_path = Path(
+            self.data_config.comprehensive_dataset_path
+        )  # Use config
         use_incremental = comprehensive_path.exists()
         logger.info(
             f"Using {'incremental' if use_incremental else 'full'} data loading"
@@ -191,8 +193,8 @@ class ForecastRunner:
         days_to_election = (self.election_day - forecast_date).days
         logger.info(f"Forecasting {days_to_election} days until election")
 
-        # Train models
-        forecaster = HoltElectionForecaster(self.model_config)
+        # Train models - UPDATED: Pass both configs
+        forecaster = HoltElectionForecaster(self.model_config, self.data_config)
         x_train = pd.Series(range(len(trump_train)))
 
         logger.info("Running hyperparameter optimization...")
@@ -559,12 +561,12 @@ class ForecastRunner:
         except Exception as e:
             logger.error(f"Failed to create forecast plot: {e}")
 
-        # Historical forecasts plot (directory already created in main.py)
+        # Historical forecasts plot - UPDATED: Use config
         historical_data = self.data_manager.create_historical_data_for_plotting(
             comprehensive_dataset, forecast_date
         )
         historical_plot_path = (
-            Path("outputs/previous_forecasts")
+            Path(self.data_config.historical_plots_dir)  # Use config
             / f"historical_{forecast_date.strftime('%m%d')}.png"
         )
 

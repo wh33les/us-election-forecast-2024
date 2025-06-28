@@ -1,5 +1,5 @@
 # src/data/collectors.py
-"""Data collection functions for election forecasting."""
+"""Data collection functions for election forecasting with separate polling cache."""
 
 import pandas as pd
 import logging
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class PollingDataCollector:
-    """Handles loading and initial processing of polling data."""
+    """Handles loading and initial processing of polling data with separate caching."""
 
     def __init__(self, config):
         self.config = config
@@ -34,34 +34,14 @@ class PollingDataCollector:
             raise
 
     def load_incremental_data(self, target_date=None) -> pd.DataFrame:
-        """Load data incrementally for target date - PERFORMANCE OPTIMIZED."""
+        """Load data incrementally using separate polling cache for optimal performance."""
         logger.info(f"Loading data incrementally for target date: {target_date}")
 
-        # Check what polling dates we already have processed
-        comprehensive_path = Path("data/election_forecast_2024_comprehensive.csv")
-        existing_polling_dates = set()
+        # Path for the separate polling cache
+        polling_cache_path = Path("data/polling_averages_cache.csv")
 
-        if comprehensive_path.exists():
-            # FIXED: Only load the specific columns we need to avoid memory issues
-            existing_data = pd.read_csv(
-                comprehensive_path,
-                usecols=["date", "candidate", "record_type", "polling_average"],
-                dtype={
-                    "candidate": "string",
-                    "record_type": "string",
-                },  # Fix mixed type warnings
-            )
-            existing_data["date"] = pd.to_datetime(existing_data["date"]).dt.date
-
-            # FIXED: Only get unique polling dates, not all records
-            polling_records = existing_data[
-                existing_data["record_type"] == "historical_polling"
-            ]
-            if len(polling_records) > 0:
-                existing_polling_dates = set(polling_records["date"].unique())
-                logger.info(
-                    f"Found existing polling data for {len(existing_polling_dates)} unique dates"
-                )
+        # Check what polling dates we already have in cache
+        existing_polling_dates = self._get_existing_polling_dates(polling_cache_path)
 
         # Determine target date range
         biden_dropout = self.config.biden_dropout_date_parsed
@@ -71,7 +51,7 @@ class PollingDataCollector:
             else pd.Timestamp.today().date()
         )
 
-        # FIXED: Only process data up to target date (no future data)
+        # Only process data up to target date (no future data)
         date_range_needed = pd.date_range(
             start=biden_dropout, end=target_date_obj, freq="D"
         ).date
@@ -79,62 +59,45 @@ class PollingDataCollector:
             d for d in date_range_needed if d < target_date_obj
         ]  # Exclude target date itself
 
-        missing_dates = [
+        # Check which dates need polling data processing
+        missing_polling_dates = [
             date for date in available_dates if date not in existing_polling_dates
         ]
 
         logger.info(
-            f"Need data for {len(available_dates)} dates, {len(missing_dates)} are missing"
+            f"Need polling data for {len(available_dates)} dates, {len(missing_polling_dates)} need processing"
         )
 
-        # Load and process only missing data
-        if len(missing_dates) == 0:
-            # All data exists, extract it efficiently
-            return self._extract_existing_daily_averages_optimized(
-                comprehensive_path, available_dates
-            )
+        # If we have all the data in cache, load from cache
+        if len(missing_polling_dates) == 0:
+            logger.info("All polling data available in cache, loading efficiently")
+            return self._load_from_polling_cache(polling_cache_path, available_dates)
 
-        # Process missing dates
+        # Process missing dates from raw data
+        logger.info(
+            f"Processing {len(missing_polling_dates)} missing dates from raw data"
+        )
         raw_data = self.load_raw_data()
-        new_raw_data = raw_data[raw_data["end_date"].isin(missing_dates)].copy()
+        new_raw_data = raw_data[raw_data["end_date"].isin(missing_polling_dates)].copy()
 
         if len(new_raw_data) == 0:
-            logger.info("No new raw data found for missing dates")
-            return self._extract_existing_daily_averages_optimized(
-                comprehensive_path, available_dates
-            )
+            logger.info("No new raw polling data found for missing dates")
+            return self._load_from_polling_cache(polling_cache_path, available_dates)
 
         # Process new data
         from .processors import PollingDataProcessor
 
         processor = PollingDataProcessor(self.config)
-
         filtered_data = processor.filter_polling_data(new_raw_data)
         new_daily_averages = processor.calculate_daily_averages(filtered_data)
 
-        # Combine with existing data efficiently
-        existing_averages = self._extract_existing_daily_averages_optimized(
-            comprehensive_path, available_dates
-        )
+        # Update polling cache with new data
+        if len(new_daily_averages) > 0:
+            self._update_polling_cache(polling_cache_path, new_daily_averages)
 
-        if len(existing_averages) == 0:
-            combined_averages = new_daily_averages
-        else:
-            combined_averages = pd.concat(
-                [existing_averages, new_daily_averages], ignore_index=True
-            )
-            # FIXED: Only keep unique candidate-date pairs
-            combined_averages = combined_averages.drop_duplicates(
-                subset=["candidate_name", "end_date"], keep="last"
-            )
-
-        # FIXED: Filter to only dates we actually need
-        combined_averages = combined_averages[
-            combined_averages["end_date"].isin(available_dates)
-        ].copy()
-
-        combined_averages.sort_values(
-            ["candidate_name", "end_date"], inplace=True, ignore_index=True
+        # Load and return all requested data from cache
+        combined_averages = self._load_from_polling_cache(
+            polling_cache_path, available_dates
         )
 
         logger.info(
@@ -142,47 +105,106 @@ class PollingDataCollector:
         )
         return combined_averages
 
-    # def load_data_for_incremental_pipeline(self, target_date=None) -> pd.DataFrame:
-    #     """Main method to load data for incremental pipeline - compatibility wrapper."""
-    #     return self.load_incremental_data(target_date)
+    def _get_existing_polling_dates(self, polling_cache_path: Path) -> set:
+        """Get existing polling dates from separate cache file."""
+        if not polling_cache_path.exists():
+            logger.debug("Polling cache file does not exist")
+            return set()
+
+        try:
+            cache_data = pd.read_csv(polling_cache_path, usecols=["end_date"])
+            cache_data["end_date"] = pd.to_datetime(cache_data["end_date"]).dt.date
+            existing_dates = set(cache_data["end_date"].unique())
+
+            logger.info(
+                f"Found existing polling data for {len(existing_dates)} unique dates in cache"
+            )
+            return existing_dates
+
+        except Exception as e:
+            logger.warning(f"Error reading polling cache: {e}, treating as empty")
+            return set()
+
+    def _load_from_polling_cache(
+        self, polling_cache_path: Path, needed_dates: list
+    ) -> pd.DataFrame:
+        """Load daily averages from polling cache for specified dates."""
+        if not polling_cache_path.exists():
+            logger.debug("Polling cache file does not exist, returning empty DataFrame")
+            return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
+
+        try:
+            cache_data = pd.read_csv(polling_cache_path)
+            cache_data["end_date"] = pd.to_datetime(cache_data["end_date"]).dt.date
+
+            # Filter to only requested dates
+            filtered_data = cache_data[cache_data["end_date"].isin(needed_dates)].copy()
+
+            # Sort consistently
+            filtered_data = filtered_data.sort_values(
+                ["candidate_name", "end_date"]
+            ).reset_index(drop=True)
+
+            logger.debug(
+                f"Loaded {len(filtered_data)} records from polling cache for {len(needed_dates)} dates"
+            )
+            return filtered_data
+
+        except Exception as e:
+            logger.error(f"Error loading from polling cache: {e}")
+            return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
+
+    def _update_polling_cache(
+        self, polling_cache_path: Path, new_daily_averages: pd.DataFrame
+    ):
+        """Update polling cache with new daily averages."""
+        try:
+            if polling_cache_path.exists():
+                # Load existing cache
+                existing_cache = pd.read_csv(polling_cache_path)
+                existing_cache["end_date"] = pd.to_datetime(
+                    existing_cache["end_date"]
+                ).dt.date
+
+                # Combine with new data
+                combined_cache = pd.concat(
+                    [existing_cache, new_daily_averages], ignore_index=True
+                )
+
+                # Remove duplicates (keep latest)
+                combined_cache = combined_cache.drop_duplicates(
+                    subset=["candidate_name", "end_date"], keep="last"
+                )
+
+                logger.debug(
+                    f"Updated existing cache: {len(existing_cache)} -> {len(combined_cache)} records"
+                )
+            else:
+                # Create new cache
+                combined_cache = new_daily_averages.copy()
+                logger.debug(
+                    f"Created new polling cache with {len(combined_cache)} records"
+                )
+
+            # Sort for consistency
+            combined_cache = combined_cache.sort_values(
+                ["candidate_name", "end_date"]
+            ).reset_index(drop=True)
+
+            # Save updated cache
+            combined_cache.to_csv(polling_cache_path, index=False)
+            logger.info(
+                f"Updated polling cache: added {len(new_daily_averages)} new records"
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating polling cache: {e}")
+            raise
 
     def _extract_existing_daily_averages_optimized(
         self, comprehensive_path, needed_dates
     ) -> pd.DataFrame:
-        """Extract daily averages efficiently - PERFORMANCE OPTIMIZED."""
-        if not comprehensive_path.exists():
-            return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
-
-        # FIXED: Only load what we need
-        existing_data = pd.read_csv(
-            comprehensive_path,
-            usecols=["date", "candidate", "record_type", "polling_average"],
-            dtype={"candidate": "string", "record_type": "string"},
-        )
-        existing_data["date"] = pd.to_datetime(existing_data["date"]).dt.date
-
-        # FIXED: Only get polling records for dates we actually need
-        polling_records = existing_data[
-            (existing_data["record_type"] == "historical_polling")
-            & (existing_data["polling_average"].notna())
-            & (existing_data["date"].isin(needed_dates))  # Only needed dates
-        ].copy()
-
-        if len(polling_records) == 0:
-            return pd.DataFrame(columns=["candidate_name", "end_date", "daily_average"])
-
-        # FIXED: Get unique polling averages per candidate-date
-        daily_averages = (
-            polling_records.groupby(["candidate", "date"])["polling_average"]
-            .first()
-            .reset_index()
-        )
-        daily_averages.columns = ["candidate_name", "end_date", "daily_average"]
-
-        return daily_averages.sort_values(["candidate_name", "end_date"]).reset_index(
-            drop=True
-        )
-
-    # def _extract_existing_daily_averages(self, comprehensive_path) -> pd.DataFrame:
-    #     """Legacy method - kept for compatibility."""
-    #     return self._extract_existing_daily_averages_optimized(comprehensive_path, [])
+        """Legacy method - now redirects to polling cache."""
+        # This method is kept for compatibility but now uses the polling cache
+        polling_cache_path = Path("data/polling_averages_cache.csv")
+        return self._load_from_polling_cache(polling_cache_path, needed_dates)

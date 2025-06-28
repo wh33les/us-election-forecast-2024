@@ -41,14 +41,8 @@ class ForecastRunner:
         """Run forecasts for all specified dates."""
         logger.info("Starting Rolling Election Forecast 2024 pipeline...")
 
-        # Determine loading strategy
-        comprehensive_path = Path(
-            self.data_config.comprehensive_dataset_path
-        )  # Use config
-        use_incremental = comprehensive_path.exists()
-        logger.info(
-            f"Using {'incremental' if use_incremental else 'full'} data loading"
-        )
+        # Always use incremental loading with polling cache
+        logger.info("Using incremental data loading with polling cache")
 
         # Initialize dataset
         comprehensive_dataset = self.data_manager.load_or_create_comprehensive_dataset()
@@ -62,10 +56,9 @@ class ForecastRunner:
                     i + 1, len(forecast_dates), forecast_date
                 )
 
-                # Load data
-                daily_averages = self._load_data_for_date(
-                    forecast_date, use_incremental
-                )
+                # Load data using incremental method with caching
+                daily_averages = self.collector.load_incremental_data(forecast_date)
+
                 if daily_averages is None or daily_averages.empty:
                     logger.warning(f"No data available for {forecast_date}")
                     continue
@@ -90,31 +83,6 @@ class ForecastRunner:
             f"Completed {success_count}/{len(forecast_dates)} forecasts successfully"
         )
         return success_count > 0
-
-    def _load_data_for_date(
-        self, forecast_date: date, use_incremental: bool
-    ) -> Optional[pd.DataFrame]:
-        """Load data for a specific forecast date."""
-        if use_incremental:
-            return self.collector.load_incremental_data(forecast_date)
-        else:
-            return self._load_full_data()
-
-    def _load_full_data(self) -> pd.DataFrame:
-        """Load and process all raw data."""
-        logger.info("Loading all raw data...")
-        raw_data = self.collector.load_raw_data()
-
-        # Filter to Biden drop-out date and later
-        biden_out = datetime(2024, 7, 21).date()
-        raw_data = raw_data[raw_data["end_date"] >= biden_out]
-        logger.info(
-            f"Filtered to data from {biden_out} onwards: {len(raw_data)} records"
-        )
-
-        # Process the data
-        filtered_data = self.processor.filter_polling_data(raw_data)
-        return self.processor.calculate_daily_averages(filtered_data)
 
     def _run_single_forecast(
         self,
@@ -193,7 +161,7 @@ class ForecastRunner:
         days_to_election = (self.election_day - forecast_date).days
         logger.info(f"Forecasting {days_to_election} days until election")
 
-        # Train models - UPDATED: Pass both configs
+        # Train models
         forecaster = HoltElectionForecaster(self.model_config, self.data_config)
         x_train = pd.Series(range(len(trump_train)))
 
@@ -492,10 +460,10 @@ class ForecastRunner:
             complete_polling_data=complete_polling_data,
         )
 
-        # Update dataset
+        # Update dataset with correct column name
         if not comprehensive_dataset.empty:
             comprehensive_dataset = comprehensive_dataset[
-                comprehensive_dataset["forecast_run_date"] != forecast_date
+                comprehensive_dataset["forecast_date"] != forecast_date
             ].copy()
 
         if comprehensive_dataset.empty:
@@ -561,12 +529,12 @@ class ForecastRunner:
         except Exception as e:
             logger.error(f"Failed to create forecast plot: {e}")
 
-        # Historical forecasts plot - UPDATED: Use config
+        # Historical forecasts plot
         historical_data = self.data_manager.create_historical_data_for_plotting(
             comprehensive_dataset, forecast_date
         )
         historical_plot_path = (
-            Path(self.data_config.historical_plots_dir)  # Use config
+            Path(self.data_config.historical_plots_dir)
             / f"historical_{forecast_date.strftime('%m%d')}.png"
         )
 

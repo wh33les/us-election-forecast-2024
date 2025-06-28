@@ -22,28 +22,18 @@ class PollingDataProcessor:
         # Extract relevant columns and candidates - UPDATED: Use config
         df = raw_data.loc[
             (raw_data["candidate_name"].isin(self.config.candidates))
-            & (raw_data["population"] == "lv"),  # likely voters only
+            & (raw_data["population"] == self.config.population_filter),
             ["pollscore", "state", "candidate_name", "end_date", "pct"],
         ].drop_duplicates()
 
         logger.info(f"After candidate and population filter: {len(df)} records")
 
-        # Restrict to national and swing state polls
-        swing_states = [
-            "Arizona",
-            "Georgia",
-            "Michigan",
-            "Nevada",
-            "North Carolina",
-            "Pennsylvania",
-            "Wisconsin",
-        ]
-
-        df = df.loc[df["state"].isin(swing_states) | df["state"].isnull()]
+        # Restrict to national and swing state polls - UPDATED: Use config
+        df = df.loc[df["state"].isin(self.config.swing_states) | df["state"].isnull()]
         logger.info(f"After geographic filter: {len(df)} records")
 
-        # Only use polls with negative pollscore
-        df = df.loc[df["pollscore"] < 0]
+        # Only use polls with negative pollscore - UPDATED: Use config
+        df = df.loc[df["pollscore"] < self.config.pollscore_threshold]
         logger.info(f"After pollscore filter: {len(df)} records")
 
         return df

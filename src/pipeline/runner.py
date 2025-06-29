@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-# UPDATED: Clean, single-purpose imports
 from src.data.polling_manager import PollingDataManager
 from src.data.history_manager import HistoryManager
 from src.models.holt_forecaster import HoltElectionForecaster
@@ -41,8 +40,11 @@ class ForecastRunner:
         logger.info("Starting pipeline...")
         logger.info("Using incremental data loading with polling cache")
 
-        # UPDATED: Initialize forecast history using history manager
-        forecast_history = self.history_manager.initialize_data_pipeline()
+        # UPDATED: Initialize both data managers separately
+        self.polling_manager.initialize_polling_data()  # Check polling data status
+        forecast_history = (
+            self.history_manager.initialize_forecast_history()
+        )  # Load forecast history
 
         # Run forecasts
         success_count = 0

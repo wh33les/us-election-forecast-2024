@@ -17,28 +17,20 @@ class HistoryManager:
         self.config = data_config
         self.election_day = data_config.election_day_parsed
 
-    def check_data_status(self):
-        """Log status of all key data files."""
+    def check_forecast_history_status(self):
+        """Log status of forecast history file."""
         history_path = Path(self.config.forecast_history_path)
-        polling_cache_path = Path(self.config.polling_cache_path)
-
         history_exists = history_path.exists()
-        polling_cache_exists = polling_cache_path.exists()
 
-        logger.info("Data file status:")
+        logger.info("Forecast history status:")
         logger.info(
             f"   - Forecast history: {'EXISTS' if history_exists else '❌ NOT FOUND'} ({history_path})"
         )
-        logger.info(
-            f"   - Polling averages cache: {'EXISTS' if polling_cache_exists else '❌ NOT FOUND'} ({polling_cache_path})"
-        )
 
-        if history_exists and polling_cache_exists:
-            logger.info("   Using existing data files for faster processing")
-        elif history_exists or polling_cache_exists:
-            logger.info("   Partial cache available, will rebuild missing components")
+        if history_exists:
+            logger.info("   Using existing forecast history for faster processing")
         else:
-            logger.info("   No cache files found, will build from scratch")
+            logger.info("   No forecast history found, will create new dataset")
 
     def load_forecast_history(self) -> pd.DataFrame:
         """Load existing forecast history dataset or create empty one."""
@@ -56,9 +48,9 @@ class HistoryManager:
             logger.info("Creating new forecast history dataset...")
             return pd.DataFrame()
 
-    def initialize_data_pipeline(self) -> pd.DataFrame:
-        """Check data status and load forecast history - main initialization function."""
-        self.check_data_status()
+    def initialize_forecast_history(self) -> pd.DataFrame:
+        """Check forecast history status and load - main initialization function."""
+        self.check_forecast_history_status()
         return self.load_forecast_history()
 
     def create_forecast_record(
@@ -104,7 +96,7 @@ class HistoryManager:
                 }
 
                 # Add electoral data only for Election Day (+2 columns = 10 total)
-                if forecast_date == self.election_day:
+                if forecast_date == self.election_day and electoral_results is not None:
                     record.update(
                         {
                             "electoral_winner_model": electoral_results["model"][

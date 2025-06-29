@@ -38,11 +38,11 @@ class DataConfig:
     # Data file paths
     raw_data_path: str = "data/raw_polling_data.csv"
     polling_cache_path: str = "data/polling_averages_cache.csv"
+    forecast_history_path: str = "data/forecast_history.csv"
 
     # Output directories and files
     forecast_images_dir: str = "outputs/forecast_images"
     historical_plots_dir: str = "outputs/previous_forecasts"
-    forecast_history_path: str = "data/forecast_history.csv"
 
     # Data filtering criteria
     candidates: List[str] = field(

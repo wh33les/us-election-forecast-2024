@@ -1,0 +1,67 @@
+Enhanced Pre-filtering Results
+===========================
+Generated: 2025-06-29 14:46:49
+
+OPTIMIZATIONS APPLIED:
+• Column selection: 52 -> 6 columns (88.5% reduction)
+• Date filtering: Only post-Biden dropout (2024-07-21)
+• Candidate filtering: Only Trump and Harris
+• Row reduction: 18,095 -> 4,732 rows (73.8% reduction)
+
+TOTAL FILE SIZE REDUCTION: 97.9%
+Original: 9.4 MB -> Optimized: 0.2 MB
+
+PRESERVED FOR PIPELINE FILTERING:
+• All population types: ['lv', 'rv', 'a', 'v']
+• All pollscore values: -1.5 to 1.7
+• All geographies: States + national polls
+
+COLUMNS REMOVED:
+• poll_id
+• pollster_id
+• pollster
+• sponsor_ids
+• sponsors
+• display_name
+• pollster_rating_id
+• pollster_rating_name
+• numeric_grade
+• methodology
+• transparency_score
+• start_date
+• sponsor_candidate_id
+• sponsor_candidate
+• sponsor_candidate_party
+• endorsed_candidate_id
+• endorsed_candidate_name
+• endorsed_candidate_party
+• question_id
+• sample_size
+• subpopulation
+• population_full
+• tracking
+• created_at
+• notes
+• url
+• url_article
+• url_topline
+• url_crosstab
+• source
+• internal
+• partisan
+• race_id
+• cycle
+• office_type
+• seat_number
+• seat_name
+• election_date
+• stage
+• nationwide_batch
+• ranked_choice_reallocated
+• ranked_choice_round
+• hypothetical
+• party
+• answer
+• candidate_id
+
+BACKUP LOCATION: data/raw_polling_data_backup.csv

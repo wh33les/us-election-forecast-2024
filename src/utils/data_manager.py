@@ -21,7 +21,7 @@ class DataManager:
     def load_or_create_comprehensive_dataset_with_status(self):
         """Load comprehensive dataset and log status of all key data files."""
         # Check all data files upfront
-        comprehensive_path = Path(self.data_config.comprehensive_dataset_path)
+        comprehensive_path = Path(self.data_config.forecast_history_path)
         polling_cache_path = Path(self.data_config.polling_cache_path)
 
         comprehensive_exists = comprehensive_path.exists()
@@ -200,7 +200,7 @@ class DataManager:
         if filepath is None:
             # Use config path if available, otherwise fallback to hardcoded path
             if self.data_config:
-                filepath = Path(self.data_config.comprehensive_dataset_path)
+                filepath = Path(self.data_config.forecast_history_path)
             else:
                 filepath = Path("data/election_forecast_2024_comprehensive.csv")
 

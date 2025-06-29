@@ -36,13 +36,13 @@ class DataConfig:
     """Configuration for data sources and filtering."""
 
     # Data file paths
-    raw_data_path: str = "data/president_polls.csv"
+    raw_data_path: str = "data/raw_polling_data.csv"
     polling_cache_path: str = "data/polling_averages_cache.csv"
 
     # Output directories and files
     forecast_images_dir: str = "outputs/forecast_images"
     historical_plots_dir: str = "outputs/previous_forecasts"
-    comprehensive_dataset_path: str = "data/election_forecast_2024_comprehensive.csv"
+    forecast_history_path: str = "data/forecast_history.csv"
 
     # Data filtering criteria
     candidates: List[str] = field(
@@ -52,8 +52,7 @@ class DataConfig:
     pollscore_threshold: float = 0.0  # negative pollscore only
 
     # Core date ranges
-    earliest_available_data: str = "2021-04-07"
-    biden_dropout_date: str = "2024-07-21"
+    earliest_available_data: str = "2024-07-21"  # Data starts from Biden dropout
     forecast_start_date: str = "2024-10-23"
     election_day: str = "2024-11-05"
 
@@ -92,9 +91,6 @@ class DataConfig:
         # Pre-compute all parsed dates (replaces 6 @property methods)
         self.earliest_available_data_parsed = datetime.strptime(
             self.earliest_available_data, "%Y-%m-%d"
-        ).date()
-        self.biden_dropout_date_parsed = datetime.strptime(
-            self.biden_dropout_date, "%Y-%m-%d"
         ).date()
         self.forecast_start_date_parsed = datetime.strptime(
             self.forecast_start_date, "%Y-%m-%d"

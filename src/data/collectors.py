@@ -43,11 +43,11 @@ class PollingDataCollector:
         existing_polling_dates = self._get_existing_polling_dates(polling_cache_path)
 
         # Determine target date range
-        biden_dropout = self.config.biden_dropout_date_parsed
+        biden_dropout = self.config.earliest_available_data_parsed
         target_date_obj = (
             pd.to_datetime(target_date).date()
             if target_date
-            else pd.Timestamp.today().date()
+            else self.config.election_day_parsed
         )
 
         # Only process data up to target date (no future data)

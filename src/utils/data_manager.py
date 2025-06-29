@@ -1,5 +1,5 @@
 # src/utils/data_manager.py
-"""Data management utilities for comprehensive datasets - CLEAN STREAMLINED VERSION."""
+"""Data management utilities for comprehensive datasets."""
 
 import logging
 import os
@@ -14,27 +14,40 @@ logger = logging.getLogger(__name__)
 class DataManager:
     """Handles loading, creating, and saving streamlined comprehensive datasets."""
 
-    def __init__(self, data_config=None):
-        self.election_day = (
-            data_config.election_day_parsed if data_config else date(2024, 11, 5)
-        )
+    def __init__(self, data_config):
         self.data_config = data_config
+        self.election_day = data_config.election_day_parsed
 
-    def load_or_create_comprehensive_dataset(self):
-        """Load existing comprehensive dataset or create new one - STREAMLINED."""
-        # Use config path if available, otherwise fallback to hardcoded path
-        if self.data_config:
-            dataset_path = Path(self.data_config.comprehensive_dataset_path)
+    def load_or_create_comprehensive_dataset_with_status(self):
+        """Load comprehensive dataset and log status of all key data files."""
+        # Check all data files upfront
+        comprehensive_path = Path(self.data_config.comprehensive_dataset_path)
+        polling_cache_path = Path(self.data_config.polling_cache_path)
+
+        comprehensive_exists = comprehensive_path.exists()
+        polling_cache_exists = polling_cache_path.exists()
+
+        # Log status of both files
+        logger.info("Data file status:")
+        logger.info(
+            f"   - Comprehensive dataset: {'EXISTS' if comprehensive_exists else '❌ NOT FOUND'} ({comprehensive_path})"
+        )
+        logger.info(
+            f"   - Polling averages cache: {'EXISTS' if polling_cache_exists else '❌ NOT FOUND'} ({polling_cache_path})"
+        )
+
+        if comprehensive_exists and polling_cache_exists:
+            logger.info("   Using existing data files for faster processing")
+        elif comprehensive_exists or polling_cache_exists:
+            logger.info("   Partial cache available, will rebuild missing components")
         else:
-            dataset_path = Path("data/election_forecast_2024_comprehensive.csv")
+            logger.info("   No cache files found, will build from scratch")
 
-        if dataset_path.exists():
+        # Load or create comprehensive dataset
+        if comprehensive_exists:
             logger.info("Loading existing streamlined comprehensive dataset...")
-
-            # Load with low_memory=False for better type inference
-            df = pd.read_csv(dataset_path, low_memory=False)
+            df = pd.read_csv(comprehensive_path, low_memory=False)
             df["forecast_date"] = pd.to_datetime(df["forecast_date"]).dt.date
-
             logger.info(
                 f"Loaded {len(df)} records from {df['forecast_date'].nunique()} forecast runs"
             )

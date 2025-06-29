@@ -19,11 +19,10 @@ class ResultFormatter:
         date_str = forecast_date.strftime("%a %b %d, %Y")
 
         if self.verbose:
-            logger.info(f"\n📅 DAY {day_num}/{total_days}: {date_str}")
-            logger.info("─" * 50)
+            logger.info(f"\nDAY {day_num}/{total_days}: {date_str}")
         else:
             logger.info(f"\n{'='*60}")
-            logger.info(f"FORECAST FOR {forecast_date} ({day_num}/{total_days})")
+            logger.info(f"Forecast for {forecast_date} ({day_num}/{total_days})")
             logger.info(f"{'='*60}")
 
     def log_forecast_success(self, forecast_date):

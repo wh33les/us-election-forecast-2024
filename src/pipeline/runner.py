@@ -41,14 +41,13 @@ class ForecastRunner:
 
     def run_forecasts(self, forecast_dates: Sequence[date]) -> bool:
         """Run forecasts for all specified dates."""
-        logger.info("Starting Rolling Election Forecast 2024 pipeline...")
-
-        # Always use incremental loading with polling cache
+        logger.info("Starting pipeline...")
         logger.info("Using incremental data loading with polling cache")
 
-        # Initialize dataset
-        comprehensive_dataset = self.data_manager.load_or_create_comprehensive_dataset()
-        logger.info(f"Starting forecasts for {len(forecast_dates)} days")
+        # Initialize dataset (now includes status logging)
+        comprehensive_dataset = (
+            self.data_manager.load_or_create_comprehensive_dataset_with_status()
+        )
 
         # Run forecasts
         success_count = 0

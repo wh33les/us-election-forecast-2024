@@ -37,8 +37,7 @@ class PollingDataCollector:
         """Load data incrementally using separate polling cache for optimal performance."""
         logger.info(f"Loading data incrementally for target date: {target_date}")
 
-        # Path for the separate polling cache
-        polling_cache_path = Path("data/polling_averages_cache.csv")
+        polling_cache_path = Path(self.config.polling_cache_path)
 
         # Check what polling dates we already have in cache
         existing_polling_dates = self._get_existing_polling_dates(polling_cache_path)

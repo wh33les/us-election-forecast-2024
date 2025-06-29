@@ -1,7 +1,7 @@
 # src/config.py
 """Configuration settings for the election forecasting pipeline."""
 
-from datetime import datetime
+from datetime import datetime, date
 from dataclasses import dataclass, field
 from typing import List, Dict
 import numpy as np
@@ -56,6 +56,14 @@ class DataConfig:
     forecast_start_date: str = "2024-10-23"
     election_day: str = "2024-11-05"
 
+    # Explicitly declare parsed date attributes for type checking
+    # These are set in __post_init__ and should never be None
+    earliest_available_data_parsed: date = field(init=False)
+    forecast_start_date_parsed: date = field(init=False)
+    election_day_parsed: date = field(init=False)
+    min_valid_date_parsed: date = field(init=False)
+    max_valid_date_parsed: date = field(init=False)
+
     # Single source of truth for swing states
     swing_states: Dict[str, Dict] = field(
         default_factory=lambda: {
@@ -71,27 +79,24 @@ class DataConfig:
 
     def __post_init__(self):
         """Initialize derived properties and parsed dates."""
-        # Set validation dates
+        # Parse all dates and assign to typed attributes
+        self.earliest_available_data_parsed = datetime.strptime(
+            self.earliest_available_data, "%Y-%m-%d"
+        ).date()
+        self.forecast_start_date_parsed = datetime.strptime(
+            self.forecast_start_date, "%Y-%m-%d"
+        ).date()
+        self.election_day_parsed = datetime.strptime(
+            self.election_day, "%Y-%m-%d"
+        ).date()
+
+        # Set validation date range (same as core dates)
+        self.min_valid_date_parsed = self.earliest_available_data_parsed
+        self.max_valid_date_parsed = self.election_day_parsed
+
+        # Legacy string attributes for backward compatibility
         self.min_valid_date = self.earliest_available_data
         self.max_valid_date = self.election_day
-
-        # Parse all dates at once
-        self._parse_dates()
-
-    def _parse_dates(self):
-        """Parse all date strings to date objects."""
-        date_fields = [
-            "earliest_available_data",
-            "forecast_start_date",
-            "election_day",
-            "min_valid_date",
-            "max_valid_date",
-        ]
-
-        for field in date_fields:
-            date_str = getattr(self, field)
-            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            setattr(self, f"{field}_parsed", parsed_date)
 
     def get_swing_state_names(self) -> List[str]:
         """Get list of swing state names."""

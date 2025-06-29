@@ -27,6 +27,41 @@ class ElectoralCollegeCalculator:
         self.harris_safe_votes = config.harris_safe_electoral_votes
         self.total_swing_votes = config.swing_state_electoral_votes
 
+    def calculate_all_outcomes(self, df_cleaned: pd.DataFrame) -> Dict[str, Dict]:
+        """Calculate electoral outcomes for both model and baseline predictions."""
+        logger.info("Calculating electoral college outcomes...")
+
+        predictions = self.extract_final_predictions(df_cleaned)
+
+        # Calculate outcomes for both model and baseline
+        model_outcome = self.calculate_swing_state_allocation(
+            predictions["model"]["trump_normalized"],
+            predictions["model"]["harris_normalized"],
+        )
+        model_outcome.update(
+            {
+                "trump_vote_pct": predictions["model"]["trump_raw"],
+                "harris_vote_pct": predictions["model"]["harris_raw"],
+            }
+        )
+
+        baseline_outcome = self.calculate_swing_state_allocation(
+            predictions["baseline"]["trump_normalized"],
+            predictions["baseline"]["harris_normalized"],
+        )
+        baseline_outcome.update(
+            {
+                "trump_vote_pct": predictions["baseline"]["trump_raw"],
+                "harris_vote_pct": predictions["baseline"]["harris_raw"],
+            }
+        )
+
+        return {
+            "model": model_outcome,
+            "baseline": baseline_outcome,
+            "predictions": predictions,
+        }
+
     def extract_final_predictions(
         self, df_cleaned: pd.DataFrame
     ) -> Dict[str, Dict[str, float]]:
@@ -110,39 +145,4 @@ class ElectoralCollegeCalculator:
             "trump_electoral_votes": trump_total,
             "harris_electoral_votes": harris_total,
             "winner": winner,
-        }
-
-    def calculate_all_outcomes(self, df_cleaned: pd.DataFrame) -> Dict[str, Dict]:
-        """Calculate electoral outcomes for both model and baseline predictions."""
-        logger.info("Calculating electoral college outcomes...")
-
-        predictions = self.extract_final_predictions(df_cleaned)
-
-        # Calculate outcomes for both model and baseline
-        model_outcome = self.calculate_swing_state_allocation(
-            predictions["model"]["trump_normalized"],
-            predictions["model"]["harris_normalized"],
-        )
-        model_outcome.update(
-            {
-                "trump_vote_pct": predictions["model"]["trump_raw"],
-                "harris_vote_pct": predictions["model"]["harris_raw"],
-            }
-        )
-
-        baseline_outcome = self.calculate_swing_state_allocation(
-            predictions["baseline"]["trump_normalized"],
-            predictions["baseline"]["harris_normalized"],
-        )
-        baseline_outcome.update(
-            {
-                "trump_vote_pct": predictions["baseline"]["trump_raw"],
-                "harris_vote_pct": predictions["baseline"]["harris_raw"],
-            }
-        )
-
-        return {
-            "model": model_outcome,
-            "baseline": baseline_outcome,
-            "predictions": predictions,
         }

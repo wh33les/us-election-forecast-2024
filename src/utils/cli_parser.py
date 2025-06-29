@@ -58,12 +58,33 @@ Examples:
     return parser.parse_args()
 
 
+def determine_forecast_dates(args) -> List[date]:
+    """Determine which dates to process based on command line arguments."""
+    # These attributes are guaranteed to be date objects after config initialization
+    default_start = _config.forecast_start_date_parsed
+    default_end = _config.election_day_parsed
+
+    if args.date:
+        return [parse_flexible_date(args.date)]
+
+    if args.start or args.end:
+        start_date = parse_flexible_date(args.start) if args.start else default_start
+        end_date = parse_flexible_date(args.end) if args.end else default_end
+
+        if start_date > end_date:
+            raise ValueError(f"Start date {start_date} is after end date {end_date}")
+
+        return pd.date_range(start=start_date, end=end_date).date.tolist()
+
+    return pd.date_range(start=default_start, end=default_end).date.tolist()
+
+
 def parse_flexible_date(date_string: str) -> date:
     """Parse flexible date formats, defaulting to 2024."""
     if not date_string or not date_string.strip():
         raise ValueError("Date string cannot be empty")
 
-    # Use module-level config
+    # These attributes are guaranteed to be date objects after config initialization
     min_date = _config.min_valid_date_parsed
     max_date = _config.max_valid_date_parsed
 
@@ -93,23 +114,3 @@ def parse_flexible_date(date_string: str) -> date:
         f"Could not parse date '{date_string}'. Try formats like: 2024-10-25, 10-25, Oct 25. "
         f"Valid range: {min_date} to {max_date}"
     )
-
-
-def determine_forecast_dates(args) -> List[date]:
-    """Determine which dates to process based on command line arguments."""
-    default_start = _config.forecast_start_date_parsed
-    default_end = _config.election_day_parsed
-
-    if args.date:
-        return [parse_flexible_date(args.date)]
-
-    if args.start or args.end:
-        start_date = parse_flexible_date(args.start) if args.start else default_start
-        end_date = parse_flexible_date(args.end) if args.end else default_end
-
-        if start_date > end_date:
-            raise ValueError(f"Start date {start_date} is after end date {end_date}")
-
-        return pd.date_range(start=start_date, end=end_date).date.tolist()
-
-    return pd.date_range(start=default_start, end=default_end).date.tolist()

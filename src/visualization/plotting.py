@@ -36,8 +36,8 @@ class ElectionPlotter:
         fitted_values: Dict[str, np.ndarray],
         best_params: Dict[str, Dict[str, float]],
         forecast_period_dates: pd.Series,
-        forecast_date: Union[datetime, date] = None,
-        training_end_date: Union[datetime, date] = None,
+        forecast_date: Optional[Union[datetime, date]] = None,
+        training_end_date: Optional[Union[datetime, date]] = None,
         holdout_baselines: Optional[Dict[str, np.ndarray]] = None,
         save_path: Optional[Path] = None,
     ):
@@ -266,10 +266,11 @@ class ElectionPlotter:
             f"$\\beta_{{Harris}} = {best_params['harris']['beta']:.2f}$"
         )
 
+        # Use type: ignore for matplotlib annotation since it handles datetime objects in practice
         plt.annotate(
             param_text,
-            xy=(election_day_dt, trump_final),
-            xytext=(datetime(2024, 7, 23), 40.5),
+            xy=(election_day_dt, trump_final),  # type: ignore[arg-type]
+            xytext=(datetime(2024, 7, 23), 40.5),  # type: ignore[arg-type]
         )
 
         # Save plot
@@ -290,6 +291,175 @@ class ElectionPlotter:
 
             except Exception as e:
                 logger.error(f"Error saving main forecast plot: {e}")
+            finally:
+                plt.close()
+        else:
+            plt.close()
+
+    def plot_historical_forecasts(
+        self,
+        previous_forecasts: pd.DataFrame,
+        forecast_date: Optional[Union[datetime, date]] = None,
+        save_path: Optional[Path] = None,
+    ):
+        """Create historical forecasts plot showing how predictions changed over time."""
+        logger.info("Creating historical forecasts plot...")
+
+        # Separate by candidate - only get data that actually exists (not NaN)
+        trump_data = previous_forecasts[
+            (previous_forecasts["candidate"] == "Donald Trump")
+            & (previous_forecasts["model"].notna())
+        ].copy()
+        harris_data = previous_forecasts[
+            (previous_forecasts["candidate"] == "Kamala Harris")
+            & (previous_forecasts["model"].notna())
+        ].copy()
+
+        # If no data available, create a minimal plot with a message
+        if len(trump_data) == 0 and len(harris_data) == 0:
+            plt.figure(figsize=(12, 6))
+            plt.text(
+                0.5,
+                0.5,
+                "No historical data available yet",
+                horizontalalignment="center",
+                verticalalignment="center",
+                transform=plt.gca().transAxes,
+                fontsize=16,
+            )
+            plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
+            plt.ylim(45, 52)
+            plt.xlabel("Date", fontsize=12)
+            plt.ylabel("Percentage of popular vote", fontsize=12)
+
+            title_date = forecast_date or datetime(2024, 10, 22).date()
+            plt.title(
+                f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
+            )
+
+            if save_path:
+                try:
+                    if save_path.exists():
+                        save_path.unlink()
+                        logger.debug(f"Removed existing file: {save_path}")
+
+                    plt.savefig(
+                        save_path,
+                        bbox_inches="tight",
+                        dpi=150,
+                        facecolor="white",
+                        edgecolor="none",
+                    )
+                    logger.info(f"Saved empty historical forecasts plot to {save_path}")
+
+                except Exception as e:
+                    logger.error(f"Error saving empty historical plot: {e}")
+                finally:
+                    plt.close()
+            else:
+                plt.close()
+            return
+
+        # Create figure
+        plt.figure(figsize=(12, 6))
+
+        # Plot model predictions with gap-aware line breaking
+        if len(trump_data) > 0:
+            self._plot_continuous_segments(
+                trump_data,
+                color="red",
+                label_prefix="Trump (model prediction)",
+                line_style="-",
+                marker="o",
+                markersize=4,
+            )
+
+        if len(harris_data) > 0:
+            self._plot_continuous_segments(
+                harris_data,
+                color="blue",
+                label_prefix="Harris (model prediction)",
+                line_style="-",
+                marker="o",
+                markersize=4,
+            )
+
+        # Plot baseline predictions with gap-aware line breaking
+        if len(trump_data) > 0:
+            self._plot_baseline_segments(
+                trump_data,
+                color="red",
+                label_prefix="Trump (baseline)",
+                line_style="--",
+                marker="s",
+                markersize=3,
+            )
+
+        if len(harris_data) > 0:
+            self._plot_baseline_segments(
+                harris_data,
+                color="blue",
+                label_prefix="Harris (baseline)",
+                line_style="--",
+                marker="s",
+                markersize=3,
+            )
+
+        # Formatting
+        plt.xlabel("Date", fontsize=12)
+        plt.ylabel("Percentage of popular vote", fontsize=12)
+        plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
+        plt.ylim(45, 52)
+
+        # Set x-axis ticks with proper date handling
+        tick_dates = [
+            datetime(2024, 10, 23),
+            datetime(2024, 10, 25),
+            datetime(2024, 10, 27),
+            datetime(2024, 10, 29),
+            datetime(2024, 10, 31),
+            datetime(2024, 11, 2),
+            datetime(2024, 11, 4),
+            datetime(2024, 11, 5),
+        ]
+        # matplotlib handles datetime objects for xticks when the plot contains dates
+        plt.xticks(tick_dates)  # type: ignore[arg-type]
+
+        # Title
+        if forecast_date:
+            title_date = forecast_date
+        else:
+            if len(trump_data) > 0:
+                title_date = trump_data["date"].max()
+            elif len(harris_data) > 0:
+                title_date = harris_data["date"].max()
+            else:
+                title_date = datetime(2024, 10, 22).date()
+
+        plt.title(
+            f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
+        )
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        # Save plot
+        if save_path:
+            try:
+                if save_path.exists():
+                    save_path.unlink()
+                    logger.debug(f"Removed existing file: {save_path}")
+
+                plt.savefig(
+                    save_path,
+                    bbox_inches="tight",
+                    dpi=150,
+                    facecolor="white",
+                    edgecolor="none",
+                )
+                logger.info(f"Saved historical forecasts plot to {save_path}")
+
+            except Exception as e:
+                logger.error(f"Error saving historical forecasts plot: {e}")
             finally:
                 plt.close()
         else:
@@ -542,172 +712,3 @@ class ElectionPlotter:
                     linewidth=2,
                     label=segment_label,
                 )
-
-    def plot_historical_forecasts(
-        self,
-        previous_forecasts: pd.DataFrame,
-        forecast_date=None,
-        save_path: Optional[Path] = None,
-    ):
-        """Create historical forecasts plot showing how predictions changed over time."""
-        logger.info("Creating historical forecasts plot...")
-
-        # Separate by candidate - only get data that actually exists (not NaN)
-        trump_data = previous_forecasts[
-            (previous_forecasts["candidate"] == "Donald Trump")
-            & (previous_forecasts["model"].notna())
-        ].copy()
-        harris_data = previous_forecasts[
-            (previous_forecasts["candidate"] == "Kamala Harris")
-            & (previous_forecasts["model"].notna())
-        ].copy()
-
-        # If no data available, create a minimal plot with a message
-        if len(trump_data) == 0 and len(harris_data) == 0:
-            plt.figure(figsize=(12, 6))
-            plt.text(
-                0.5,
-                0.5,
-                "No historical data available yet",
-                horizontalalignment="center",
-                verticalalignment="center",
-                transform=plt.gca().transAxes,
-                fontsize=16,
-            )
-            plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
-            plt.ylim(45, 52)
-            plt.xlabel("Date", fontsize=12)
-            plt.ylabel("Percentage of popular vote", fontsize=12)
-
-            title_date = forecast_date or datetime(2024, 10, 22).date()
-            plt.title(
-                f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
-            )
-
-            if save_path:
-                try:
-                    if save_path.exists():
-                        save_path.unlink()
-                        logger.debug(f"Removed existing file: {save_path}")
-
-                    plt.savefig(
-                        save_path,
-                        bbox_inches="tight",
-                        dpi=150,
-                        facecolor="white",
-                        edgecolor="none",
-                    )
-                    logger.info(f"Saved empty historical forecasts plot to {save_path}")
-
-                except Exception as e:
-                    logger.error(f"Error saving empty historical plot: {e}")
-                finally:
-                    plt.close()
-            else:
-                plt.close()
-            return
-
-        # Create figure
-        plt.figure(figsize=(12, 6))
-
-        # Plot model predictions with gap-aware line breaking
-        if len(trump_data) > 0:
-            self._plot_continuous_segments(
-                trump_data,
-                color="red",
-                label_prefix="Trump (model prediction)",
-                line_style="-",
-                marker="o",
-                markersize=4,
-            )
-
-        if len(harris_data) > 0:
-            self._plot_continuous_segments(
-                harris_data,
-                color="blue",
-                label_prefix="Harris (model prediction)",
-                line_style="-",
-                marker="o",
-                markersize=4,
-            )
-
-        # Plot baseline predictions with gap-aware line breaking
-        if len(trump_data) > 0:
-            self._plot_baseline_segments(
-                trump_data,
-                color="red",
-                label_prefix="Trump (baseline)",
-                line_style="--",
-                marker="s",
-                markersize=3,
-            )
-
-        if len(harris_data) > 0:
-            self._plot_baseline_segments(
-                harris_data,
-                color="blue",
-                label_prefix="Harris (baseline)",
-                line_style="--",
-                marker="s",
-                markersize=3,
-            )
-
-        # Formatting
-        plt.xlabel("Date", fontsize=12)
-        plt.ylabel("Percentage of popular vote", fontsize=12)
-        plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
-        plt.ylim(45, 52)
-
-        # Set x-axis ticks
-        plt.xticks(
-            [
-                datetime(2024, 10, 23),
-                datetime(2024, 10, 25),
-                datetime(2024, 10, 27),
-                datetime(2024, 10, 29),
-                datetime(2024, 10, 31),
-                datetime(2024, 11, 2),
-                datetime(2024, 11, 4),
-                datetime(2024, 11, 5),
-            ]
-        )
-
-        # Title
-        if forecast_date:
-            title_date = forecast_date
-        else:
-            if len(trump_data) > 0:
-                title_date = trump_data["date"].max()
-            elif len(harris_data) > 0:
-                title_date = harris_data["date"].max()
-            else:
-                title_date = datetime(2024, 10, 22).date()
-
-        plt.title(
-            f"Predictions up to {title_date.strftime('%a %b %d %Y')}", fontsize=16
-        )
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-
-        # Save plot
-        if save_path:
-            try:
-                if save_path.exists():
-                    save_path.unlink()
-                    logger.debug(f"Removed existing file: {save_path}")
-
-                plt.savefig(
-                    save_path,
-                    bbox_inches="tight",
-                    dpi=150,
-                    facecolor="white",
-                    edgecolor="none",
-                )
-                logger.info(f"Saved historical forecasts plot to {save_path}")
-
-            except Exception as e:
-                logger.error(f"Error saving historical forecasts plot: {e}")
-            finally:
-                plt.close()
-        else:
-            plt.close()

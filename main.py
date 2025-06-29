@@ -76,7 +76,7 @@ def main():
     Path(data_config.forecast_images_dir).mkdir(
         parents=True, exist_ok=True
     )  # outputs/forecast_images
-    Path("outputs/previous_forecasts").mkdir(
+    Path(data_config.historical_plots_dir).mkdir(
         parents=True, exist_ok=True
     )  # outputs/previous_forecasts
 

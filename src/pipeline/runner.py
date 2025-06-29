@@ -27,7 +27,9 @@ class ForecastRunner:
         self.data_config = data_config
         self.verbose = verbose
         self.debug = debug
-        self.election_day = datetime(2024, 11, 5).date()
+        self.election_day = (
+            data_config.election_day_parsed
+        )  # Use data_config (single source of truth)
 
         # Initialize components
         self.collector = PollingDataCollector(data_config)
@@ -97,11 +99,12 @@ class ForecastRunner:
         ].copy()
         logger.info(f"Using {len(available_data)} records before {forecast_date}")
 
-        # Split by candidate
+        # Split by candidate - remove minimum data checks (we have 3 years of data)
         trump_data, harris_data = self.processor.split_by_candidate(available_data)
 
-        if len(trump_data) < 10 or len(harris_data) < 10:
-            logger.warning(f"Insufficient data for {forecast_date}, skipping")
+        # Only check for completely empty data (not arbitrary minimums)
+        if len(trump_data) == 0 or len(harris_data) == 0:
+            logger.warning(f"No polling data found for {forecast_date}")
             return None
 
         # Prepare train/holdout split
@@ -115,8 +118,9 @@ class ForecastRunner:
             harris_data["end_date"] >= train_cutoff_date
         ].copy()
 
-        if len(trump_train) < 10 or len(harris_train) < 10:
-            logger.warning("Insufficient training data, skipping")
+        # Only check for completely empty training data (not arbitrary minimums)
+        if len(trump_train) == 0 or len(harris_train) == 0:
+            logger.warning("No training data available, skipping")
             return None
 
         if self.verbose:
@@ -208,7 +212,7 @@ class ForecastRunner:
                 holdout_predictions, trump_holdout, harris_holdout
             )
 
-        # Calculate electoral outcomes
+        # Calculate electoral outcomes (simplified - only on Election Day)
         electoral_results = self._calculate_electoral_outcomes(
             forecasts, baselines, forecast_date
         )
@@ -289,13 +293,13 @@ class ForecastRunner:
 
     def _calculate_electoral_outcomes(
         self, forecasts: Dict, baselines: Dict, forecast_date: date
-    ) -> Dict:
-        """Calculate electoral college outcomes."""
-        if (
-            forecast_date == self.election_day
-            and forecasts["trump"].size > 0
-            and forecasts["harris"].size > 0
-        ):
+    ) -> Optional[Dict]:
+        """Only calculate electoral results on Election Day."""
+        if forecast_date != self.election_day:
+            return None  # No electoral calculation needed
+
+        # Only run electoral college math on Election Day
+        if forecasts["trump"].size > 0 and forecasts["harris"].size > 0:
             electoral_data = pd.DataFrame(
                 [
                     {
@@ -318,38 +322,7 @@ class ForecastRunner:
             logger.info("Calculating electoral college outcomes...")
             return self.calculator.calculate_all_outcomes(electoral_data)
 
-        # Fallback for non-Election Day
-        return self._create_fallback_electoral_results(forecasts, baselines)
-
-    def _create_fallback_electoral_results(
-        self, forecasts: Dict, baselines: Dict
-    ) -> Dict:
-        """Create fallback electoral results."""
-        trump_pred = forecasts["trump"][-1] if forecasts["trump"].size > 0 else 0
-        harris_pred = forecasts["harris"][-1] if forecasts["harris"].size > 0 else 0
-        trump_base = baselines["trump"][-1] if baselines["trump"].size > 0 else 0
-        harris_base = baselines["harris"][-1] if baselines["harris"].size > 0 else 0
-
-        return {
-            "model": {
-                "winner": "N/A (interim forecast)",
-                "trump_electoral_votes": None,
-                "harris_electoral_votes": None,
-                "trump_states": [],
-                "harris_states": [],
-                "trump_vote_pct": trump_pred,
-                "harris_vote_pct": harris_pred,
-            },
-            "baseline": {
-                "winner": "N/A (interim forecast)",
-                "trump_electoral_votes": None,
-                "harris_electoral_votes": None,
-                "trump_states": [],
-                "harris_states": [],
-                "trump_vote_pct": trump_base,
-                "harris_vote_pct": harris_base,
-            },
-        }
+        return None
 
     def _prepare_plotting_data(
         self,

@@ -43,9 +43,41 @@ class ResultFormatter:
             logger.error(f"❌ Failed forecast for {forecast_date}: {error}")
 
     def log_forecast_results(self, forecast_results, forecast_date, election_day):
-        """Log the results of a forecast, including both model and baseline predictions."""
+        """Log the results of a forecast, handling both electoral and non-electoral cases."""
         electoral_results = forecast_results["electoral_results"]
 
+        if electoral_results:
+            # Election Day - show both popular vote and electoral results
+            self._log_electoral_results_detailed(electoral_results, forecast_date)
+        else:
+            # Non-Election Day - show popular vote predictions only
+            self._log_popular_vote_only(forecast_results, forecast_date)
+
+    def _log_popular_vote_only(self, forecast_results, forecast_date):
+        """Log popular vote predictions for non-Election Day forecasts."""
+        # Extract vote percentages from forecasts
+        forecasts = forecast_results["forecasts"]
+        baselines = forecast_results["baselines"]
+
+        # Get final predictions (last value in the forecast arrays)
+        trump_model = forecasts["trump"][-1] if len(forecasts["trump"]) > 0 else 0
+        harris_model = forecasts["harris"][-1] if len(forecasts["harris"]) > 0 else 0
+        trump_baseline = baselines["trump"][-1] if len(baselines["trump"]) > 0 else 0
+        harris_baseline = baselines["harris"][-1] if len(baselines["harris"]) > 0 else 0
+
+        prefix = "   📊" if self.verbose else "  "
+        logger.info(
+            f"{prefix} Model prediction: Trump {trump_model:.1f}%, Harris {harris_model:.1f}%"
+        )
+        logger.info(
+            f"{prefix} Baseline prediction: Trump {trump_baseline:.1f}%, Harris {harris_baseline:.1f}%"
+        )
+        logger.info(
+            f"{prefix} Interim forecast (electoral calculation only on Election Day)"
+        )
+
+    def _log_electoral_results_detailed(self, electoral_results, forecast_date):
+        """Log detailed electoral college results for Election Day."""
         # Log popular vote predictions for both model and baseline
         model_trump_pct = electoral_results["model"]["trump_vote_pct"]
         model_harris_pct = electoral_results["model"]["harris_vote_pct"]
@@ -60,14 +92,10 @@ class ResultFormatter:
             f"{prefix} Baseline prediction: Trump {baseline_trump_pct:.1f}%, Harris {baseline_harris_pct:.1f}%"
         )
 
-        if forecast_date == date(2024, 11, 5):
-            self._log_electoral_results(electoral_results)
-        else:
-            logger.info(
-                f"{prefix} Interim forecast (electoral calculation only on Election Day)"
-            )
+        # Log electoral college results
+        self._log_electoral_outcomes(electoral_results)
 
-    def _log_electoral_results(self, electoral_results):
+    def _log_electoral_outcomes(self, electoral_results):
         """Log detailed electoral college results for both model and baseline."""
         prefix = "   🏆" if self.verbose else "  "
 
@@ -132,11 +160,16 @@ class ResultFormatter:
             ),
         ]:
             states = results[states_key]
-            state_details = (
-                [state_names.get(state, state) for state in states]
-                if states
-                else ["None"]
-            )
+
+            # Fix: Ensure all elements are strings (filter out None values)
+            if states:
+                state_details = [
+                    state_names.get(state, str(state))
+                    for state in states
+                    if state is not None
+                ]
+            else:
+                state_details = ["None"]
 
             safe_votes = 219 if candidate == "Trump" else 226
             logger.info(

@@ -17,29 +17,18 @@ class PollingDataManager:
         self.config = config
 
     def check_polling_data_status(self):
-        """Log status of all polling-related data files."""
-        raw_data_path = Path(self.config.raw_data_path)
+        """Log status of polling cache."""
         polling_cache_path = Path(self.config.polling_cache_path)
-
-        raw_data_exists = raw_data_path.exists()
         polling_cache_exists = polling_cache_path.exists()
 
-        logger.info("Polling data status:")
-        logger.info(
-            f"   - Raw polling data: {'EXISTS' if raw_data_exists else '❌ NOT FOUND'} ({raw_data_path})"
-        )
         logger.info(
             f"   - Polling averages cache: {'EXISTS' if polling_cache_exists else '❌ NOT FOUND'} ({polling_cache_path})"
         )
 
-        if raw_data_exists and polling_cache_exists:
+        if polling_cache_exists:
             logger.info("   Using existing polling cache for faster processing")
-        elif polling_cache_exists:
-            logger.info("   Partial cache available, will rebuild missing components")
-        elif raw_data_exists:
-            logger.info("   Raw data available, will build cache from scratch")
         else:
-            logger.warning("   No polling data files found!")
+            logger.info("   No cache found, will build from raw data")
 
     def load_raw_data(self) -> pd.DataFrame:
         """Load raw polling data from CSV file."""
@@ -116,10 +105,6 @@ class PollingDataManager:
             f"Calculated daily averages for {len(df_cleaned)} candidate-date pairs"
         )
         return df_cleaned
-
-    def initialize_polling_data(self):
-        """Check polling data status - call this before loading data."""
-        self.check_polling_data_status()
 
     def load_incremental_data(self, target_date: Optional[date] = None) -> pd.DataFrame:
         """Load data incrementally using separate polling cache for optimal performance."""

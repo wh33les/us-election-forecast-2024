@@ -48,11 +48,6 @@ class HistoryManager:
             logger.info("Creating new forecast history dataset...")
             return pd.DataFrame()
 
-    def initialize_forecast_history(self) -> pd.DataFrame:
-        """Check forecast history status and load - main initialization function."""
-        self.check_forecast_history_status()
-        return self.load_forecast_history()
-
     def create_forecast_record(
         self,
         training_data: pd.DataFrame,

@@ -40,11 +40,9 @@ class ForecastRunner:
         logger.info("Starting pipeline...")
         logger.info("Using incremental data loading with polling cache")
 
-        # UPDATED: Initialize both data managers separately
-        self.polling_manager.initialize_polling_data()  # Check polling data status
         forecast_history = (
-            self.history_manager.initialize_forecast_history()
-        )  # Load forecast history
+            self.history_manager.load_forecast_history()
+        )  # Load forecast history for appending
 
         # Run forecasts
         success_count = 0

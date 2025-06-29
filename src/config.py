@@ -51,17 +51,13 @@ class DataConfig:
     population_filter: str = "lv"  # likely voters
     pollscore_threshold: float = 0.0  # negative pollscore only
 
-    # Core date ranges
-    earliest_available_data: str = "2024-07-21"  # Data starts from Biden dropout
+    # Core date strings
+    earliest_available_data: str = "2024-07-21"
     forecast_start_date: str = "2024-10-23"
     election_day: str = "2024-11-05"
 
-    # CLI validation ranges - will be set in __post_init__
-    min_valid_date: str = ""  # Will be set to earliest_available_data
-    max_valid_date: str = ""  # Will be set to election_day
-
-    # Single comprehensive swing states mapping
-    swing_states_info: Dict[str, Dict] = field(
+    # Single source of truth for swing states
+    swing_states: Dict[str, Dict] = field(
         default_factory=lambda: {
             "Arizona": {"code": "AZ", "electoral_votes": 11},
             "Georgia": {"code": "GA", "electoral_votes": 16},
@@ -74,33 +70,36 @@ class DataConfig:
     )
 
     def __post_init__(self):
-        """Set CLI validation dates, derive swing state formats, and pre-compute all parsed dates."""
-        # Set CLI validation dates based on other date fields
-        if not self.min_valid_date:
-            self.min_valid_date = self.earliest_available_data
-        if not self.max_valid_date:
-            self.max_valid_date = self.election_day
+        """Initialize derived properties and parsed dates."""
+        # Set validation dates
+        self.min_valid_date = self.earliest_available_data
+        self.max_valid_date = self.election_day
 
-        # Derive swing states list and electoral mapping from single source
-        self.swing_states = list(self.swing_states_info.keys())
-        self.swing_states_electoral_votes = {
-            info["code"]: info["electoral_votes"]
-            for info in self.swing_states_info.values()
+        # Parse all dates at once
+        self._parse_dates()
+
+    def _parse_dates(self):
+        """Parse all date strings to date objects."""
+        date_fields = [
+            "earliest_available_data",
+            "forecast_start_date",
+            "election_day",
+            "min_valid_date",
+            "max_valid_date",
+        ]
+
+        for field in date_fields:
+            date_str = getattr(self, field)
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            setattr(self, f"{field}_parsed", parsed_date)
+
+    def get_swing_state_names(self) -> List[str]:
+        """Get list of swing state names."""
+        return list(self.swing_states.keys())
+
+    def get_swing_state_codes(self) -> Dict[str, int]:
+        """Get mapping of state codes to electoral votes."""
+        return {
+            state_info["code"]: state_info["electoral_votes"]
+            for state_info in self.swing_states.values()
         }
-
-        # Pre-compute all parsed dates (replaces 6 @property methods)
-        self.earliest_available_data_parsed = datetime.strptime(
-            self.earliest_available_data, "%Y-%m-%d"
-        ).date()
-        self.forecast_start_date_parsed = datetime.strptime(
-            self.forecast_start_date, "%Y-%m-%d"
-        ).date()
-        self.election_day_parsed = datetime.strptime(
-            self.election_day, "%Y-%m-%d"
-        ).date()
-        self.min_valid_date_parsed = datetime.strptime(
-            self.min_valid_date, "%Y-%m-%d"
-        ).date()
-        self.max_valid_date_parsed = datetime.strptime(
-            self.max_valid_date, "%Y-%m-%d"
-        ).date()

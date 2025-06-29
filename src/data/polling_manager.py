@@ -1,15 +1,17 @@
-# src/data/collectors.py
-"""Data collection functions for election forecasting with separate polling cache."""
+# src/data/polling_manager.py
+"""Complete polling data management - raw data, processing, and caching."""
 
 import pandas as pd
 import logging
 from pathlib import Path
+from datetime import date
+from typing import Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class PollingDataCollector:
-    """Handles loading and initial processing of polling data with separate caching."""
+class PollingDataManager:
+    """Handles all polling data operations - loading, processing, caching, and splitting."""
 
     def __init__(self, config):
         self.config = config
@@ -33,7 +35,64 @@ class PollingDataCollector:
             logger.error(f"Error loading raw data: {e}")
             raise
 
-    def load_incremental_data(self, target_date=None) -> pd.DataFrame:
+    def filter_polling_data(self, raw_data: pd.DataFrame) -> pd.DataFrame:
+        """Filter polling data based on configuration criteria."""
+        logger.info("Filtering polling data...")
+
+        # Extract relevant columns and candidates
+        df = raw_data.loc[
+            (raw_data["candidate_name"].isin(self.config.candidates))
+            & (raw_data["population"] == self.config.population_filter),
+            ["pollscore", "state", "candidate_name", "end_date", "pct"],
+        ].drop_duplicates()
+
+        logger.info(f"After candidate and population filter: {len(df)} records")
+
+        # Restrict to national and swing state polls
+        df = df.loc[
+            df["state"].isin(self.config.get_swing_state_names()) | df["state"].isnull()
+        ]
+        logger.info(f"After geographic filter: {len(df)} records")
+
+        # Only use polls with negative pollscore
+        df = df.loc[df["pollscore"] < self.config.pollscore_threshold]
+        logger.info(f"After pollscore filter: {len(df)} records")
+
+        return df
+
+    def calculate_daily_averages(self, filtered_data: pd.DataFrame) -> pd.DataFrame:
+        """Calculate daily averages for each candidate."""
+        logger.info("Calculating daily averages...")
+
+        # Group by date and candidate to get daily averages
+        daily_average = (
+            filtered_data.groupby(["end_date", "candidate_name"])["pct"]
+            .mean()
+            .reset_index(name="daily_average")
+        )
+
+        # Merge back with original data
+        df_with_averages = pd.merge(filtered_data, daily_average)
+
+        # Create cleaned dataframe with just what we need
+        df_cleaned = df_with_averages[
+            ["candidate_name", "end_date", "daily_average"]
+        ].drop_duplicates()
+
+        # Sort by candidate and date
+        df_cleaned.sort_values(
+            ["candidate_name", "end_date"],
+            ascending=[True, True],
+            inplace=True,
+            ignore_index=True,
+        )
+
+        logger.info(
+            f"Calculated daily averages for {len(df_cleaned)} candidate-date pairs"
+        )
+        return df_cleaned
+
+    def load_incremental_data(self, target_date: Optional[date] = None) -> pd.DataFrame:
         """Load data incrementally using separate polling cache for optimal performance."""
         logger.info(f"Loading data incrementally for target date: {target_date}")
 
@@ -84,11 +143,8 @@ class PollingDataCollector:
             return self._load_from_polling_cache(polling_cache_path, available_dates)
 
         # Process new data
-        from .processors import PollingDataProcessor
-
-        processor = PollingDataProcessor(self.config)
-        filtered_data = processor.filter_polling_data(new_raw_data)
-        new_daily_averages = processor.calculate_daily_averages(filtered_data)
+        filtered_data = self.filter_polling_data(new_raw_data)
+        new_daily_averages = self.calculate_daily_averages(filtered_data)
 
         # Update polling cache with new data
         if len(new_daily_averages) > 0:
@@ -103,6 +159,18 @@ class PollingDataCollector:
             f"Final daily averages: {len(combined_averages)} total records for {len(available_dates)} dates"
         )
         return combined_averages
+
+    def split_by_candidate(
+        self, df_cleaned: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Split cleaned data by candidate for modeling."""
+        trump = df_cleaned[(df_cleaned["candidate_name"] == "Donald Trump")].copy()
+        harris = df_cleaned[(df_cleaned["candidate_name"] == "Kamala Harris")].copy()
+
+        logger.info(
+            f"Split data: {len(trump)} Trump records, {len(harris)} Harris records"
+        )
+        return trump, harris
 
     def _get_existing_polling_dates(self, polling_cache_path: Path) -> set:
         """Get existing polling dates from separate cache file."""
@@ -199,11 +267,3 @@ class PollingDataCollector:
         except Exception as e:
             logger.error(f"Error updating polling cache: {e}")
             raise
-
-    def _extract_existing_daily_averages_optimized(
-        self, comprehensive_path, needed_dates
-    ) -> pd.DataFrame:
-        """Legacy method - now redirects to polling cache."""
-        # This method is kept for compatibility but now uses the polling cache
-        polling_cache_path = Path(self.config.polling_cache_path)
-        return self._load_from_polling_cache(polling_cache_path, needed_dates)

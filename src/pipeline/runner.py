@@ -8,12 +8,12 @@ from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from src.data.collectors import PollingDataCollector
-from src.data.processors import PollingDataProcessor
+# UPDATED: Clean, single-purpose imports
+from src.data.polling_manager import PollingDataManager
+from src.data.history_manager import HistoryManager
 from src.models.holt_forecaster import HoltElectionForecaster
 from src.models.electoral_calculator import ElectoralCollegeCalculator
 from src.visualization.plotting import ElectionPlotter
-from src.utils.data_manager import DataManager
 from src.utils.result_formatter import ResultFormatter
 
 logger = logging.getLogger(__name__)
@@ -27,16 +27,13 @@ class ForecastRunner:
         self.data_config = data_config
         self.verbose = verbose
         self.debug = debug
-        self.election_day = (
-            data_config.election_day_parsed
-        )  # Use data_config (single source of truth)
+        self.election_day = data_config.election_day_parsed
 
-        # Initialize components
-        self.collector = PollingDataCollector(data_config)
-        self.processor = PollingDataProcessor(data_config)
+        # UPDATED: Clear, single-purpose managers
+        self.polling_manager = PollingDataManager(data_config)
+        self.history_manager = HistoryManager(data_config)
         self.calculator = ElectoralCollegeCalculator(model_config)
         self.plotter = ElectionPlotter(data_config)
-        self.data_manager = DataManager(data_config)
         self.formatter = ResultFormatter(verbose, debug)
 
     def run_forecasts(self, forecast_dates: Sequence[date]) -> bool:
@@ -44,10 +41,8 @@ class ForecastRunner:
         logger.info("Starting pipeline...")
         logger.info("Using incremental data loading with polling cache")
 
-        # Initialize dataset (now includes status logging)
-        comprehensive_dataset = (
-            self.data_manager.load_or_create_comprehensive_dataset_with_status()
-        )
+        # UPDATED: Initialize forecast history using history manager
+        forecast_history = self.history_manager.initialize_data_pipeline()
 
         # Run forecasts
         success_count = 0
@@ -57,8 +52,10 @@ class ForecastRunner:
                     i + 1, len(forecast_dates), forecast_date
                 )
 
-                # Load data using incremental method with caching
-                daily_averages = self.collector.load_incremental_data(forecast_date)
+                # UPDATED: Load data using polling manager
+                daily_averages = self.polling_manager.load_incremental_data(
+                    forecast_date
+                )
 
                 if daily_averages is None or daily_averages.empty:
                     logger.warning(f"No data available for {forecast_date}")
@@ -66,11 +63,11 @@ class ForecastRunner:
 
                 # Execute forecast
                 result = self._run_single_forecast(
-                    forecast_date, daily_averages, comprehensive_dataset
+                    forecast_date, daily_averages, forecast_history
                 )
 
                 if result is not None:
-                    comprehensive_dataset = result
+                    forecast_history = result
                     success_count += 1
                     self.formatter.log_forecast_success(forecast_date)
                 else:
@@ -89,7 +86,7 @@ class ForecastRunner:
         self,
         forecast_date: date,
         daily_averages: pd.DataFrame,
-        comprehensive_dataset: pd.DataFrame,
+        forecast_history: pd.DataFrame,
     ) -> Optional[pd.DataFrame]:
         """Run forecast for a single date."""
         # Use only data available before forecast date
@@ -98,8 +95,10 @@ class ForecastRunner:
         ].copy()
         logger.info(f"Using {len(available_data)} records before {forecast_date}")
 
-        # Split by candidate - remove minimum data checks (we have 3 years of data)
-        trump_data, harris_data = self.processor.split_by_candidate(available_data)
+        # UPDATED: Split by candidate using polling manager
+        trump_data, harris_data = self.polling_manager.split_by_candidate(
+            available_data
+        )
 
         # Only check for completely empty data (not arbitrary minimums)
         if len(trump_data) == 0 or len(harris_data) == 0:
@@ -141,15 +140,15 @@ class ForecastRunner:
             return None
 
         # Update dataset and create visualizations
-        comprehensive_dataset = self._update_and_visualize(
-            comprehensive_dataset, forecast_results, forecast_date, daily_averages
+        forecast_history = self._update_and_visualize(
+            forecast_history, forecast_results, forecast_date, daily_averages
         )
 
         # Log results
         self.formatter.log_forecast_results(
             forecast_results, forecast_date, self.election_day
         )
-        return comprehensive_dataset
+        return forecast_history
 
     def _execute_forecast(
         self,
@@ -400,13 +399,13 @@ class ForecastRunner:
 
     def _update_and_visualize(
         self,
-        comprehensive_dataset: pd.DataFrame,
+        forecast_history: pd.DataFrame,
         forecast_results: Dict,
         forecast_date: date,
         complete_polling_data: pd.DataFrame,
     ) -> pd.DataFrame:
         """Update dataset and create visualizations."""
-        logger.info("Updating comprehensive dataset...")
+        logger.info("Updating forecast history...")
 
         # Combine training data
         train_dfs = [
@@ -421,8 +420,8 @@ class ForecastRunner:
             pd.concat(train_dfs, ignore_index=True) if train_dfs else pd.DataFrame()
         )
 
-        # Create forecast record
-        daily_forecast_record = self.data_manager.create_comprehensive_forecast_record(
+        # UPDATED: Create forecast record using history manager
+        daily_forecast_record = self.history_manager.create_forecast_record(
             training_data,
             forecast_results["historical_dates"],
             forecast_results["days_till_then"],
@@ -436,42 +435,36 @@ class ForecastRunner:
         )
 
         # Update dataset with correct column name
-        if not comprehensive_dataset.empty:
-            comprehensive_dataset = comprehensive_dataset[
-                comprehensive_dataset["forecast_date"] != forecast_date
+        if not forecast_history.empty:
+            forecast_history = forecast_history[
+                forecast_history["forecast_date"] != forecast_date
             ].copy()
 
-        if comprehensive_dataset.empty:
-            comprehensive_dataset = daily_forecast_record
+        if forecast_history.empty:
+            forecast_history = daily_forecast_record
         else:
             dfs_to_concat = [
-                df
-                for df in [comprehensive_dataset, daily_forecast_record]
-                if not df.empty
+                df for df in [forecast_history, daily_forecast_record] if not df.empty
             ]
-            comprehensive_dataset = (
+            forecast_history = (
                 pd.concat(dfs_to_concat, ignore_index=True)
                 if dfs_to_concat
                 else daily_forecast_record
             )
 
-        # Save dataset
-        comprehensive_dataset = self.data_manager.save_comprehensive_dataset(
-            comprehensive_dataset
-        )
+        # UPDATED: Save dataset using history manager
+        forecast_history = self.history_manager.save_forecast_history(forecast_history)
 
         # Generate visualizations
-        self._create_visualizations(
-            forecast_results, forecast_date, comprehensive_dataset
-        )
+        self._create_visualizations(forecast_results, forecast_date, forecast_history)
 
-        return comprehensive_dataset
+        return forecast_history
 
     def _create_visualizations(
         self,
         forecast_results: Dict,
         forecast_date: date,
-        comprehensive_dataset: pd.DataFrame,
+        forecast_history: pd.DataFrame,
     ):
         """Generate forecast and historical visualizations."""
         logger.info("Creating visualizations...")
@@ -504,9 +497,9 @@ class ForecastRunner:
         except Exception as e:
             logger.error(f"Failed to create forecast plot: {e}")
 
-        # Historical forecasts plot
-        historical_data = self.data_manager.create_historical_data_for_plotting(
-            comprehensive_dataset, forecast_date
+        # UPDATED: Historical forecasts plot using history manager
+        historical_data = self.history_manager.create_historical_data_for_plotting(
+            forecast_history, forecast_date
         )
         historical_plot_path = (
             Path(self.data_config.historical_plots_dir)

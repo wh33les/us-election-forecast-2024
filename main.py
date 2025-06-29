@@ -32,9 +32,8 @@ def main():
             "optimization and random walk with drift baseline."
         )
         logger.info(
-            "Outputs (4 ct): Comprehensive CSV storing previous forecasts, "
-            "daily average cache file for quicker processing, "
-            "images for current forecast and history of forecasts."
+            "Outputs (4 ct): History of forecasts and daily average cache file for "
+            "quicker processing, images for current forecast and history of forecasts."
         )
         logger.info("=" * 60)
     elif args.debug:

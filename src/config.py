@@ -2,8 +2,8 @@
 """Configuration settings for the election forecasting pipeline."""
 
 from datetime import datetime
-from dataclasses import dataclass
-from typing import List, Optional, Dict
+from dataclasses import dataclass, field
+from typing import List, Dict
 import numpy as np
 
 
@@ -14,7 +14,6 @@ class ModelConfig:
     # Cross-validation settings
     n_splits: int = 5
     test_size: int = 7
-    no_test_days: int = 0
 
     # Grid search parameters for Holt smoothing
     grid_min: float = 0.0
@@ -38,19 +37,18 @@ class DataConfig:
 
     # Data file paths
     raw_data_path: str = "data/president_polls.csv"
-    cleaned_data_path: str = "data/df_cleaned.csv"
-    previous_forecasts_path: str = "data/previous.csv"
+    polling_cache_path: str = "data/polling_averages_cache.csv"
 
-    # Output directories
+    # Output directories and files
     forecast_images_dir: str = "outputs/forecast_images"
-    debug_plots_dir: str = "outputs/debug_plots"
-    comprehensive_dataset_path: str = "data/election_forecast_2024_comprehensive.csv"
     historical_plots_dir: str = "outputs/previous_forecasts"
+    comprehensive_dataset_path: str = "data/election_forecast_2024_comprehensive.csv"
 
     # Data filtering criteria
-    candidates: Optional[List[str]] = None
+    candidates: List[str] = field(
+        default_factory=lambda: ["Donald Trump", "Kamala Harris"]
+    )
     population_filter: str = "lv"  # likely voters
-    swing_states: Optional[List[str]] = None
     pollscore_threshold: float = 0.0  # negative pollscore only
 
     # Core date ranges
@@ -59,66 +57,54 @@ class DataConfig:
     forecast_start_date: str = "2024-10-23"
     election_day: str = "2024-11-05"
 
-    # CLI validation ranges
-    min_valid_date: str = "2024-10-01"  # Earliest acceptable input date
-    max_valid_date: str = "2024-11-30"  # Latest acceptable input date
+    # CLI validation ranges - will be set in __post_init__
+    min_valid_date: str = ""  # Will be set to earliest_available_data
+    max_valid_date: str = ""  # Will be set to election_day
 
-    # Swing states electoral vote mapping
-    swing_states_electoral_votes: Optional[Dict[str, int]] = None
+    # Single comprehensive swing states mapping
+    swing_states_info: Dict[str, Dict] = field(
+        default_factory=lambda: {
+            "Arizona": {"code": "AZ", "electoral_votes": 11},
+            "Georgia": {"code": "GA", "electoral_votes": 16},
+            "Michigan": {"code": "MI", "electoral_votes": 15},
+            "Nevada": {"code": "NV", "electoral_votes": 6},
+            "North Carolina": {"code": "NC", "electoral_votes": 16},
+            "Pennsylvania": {"code": "PA", "electoral_votes": 19},
+            "Wisconsin": {"code": "WI", "electoral_votes": 10},
+        }
+    )
 
     def __post_init__(self):
-        """Initialize default values that depend on other attributes."""
-        if self.candidates is None:
-            self.candidates = ["Donald Trump", "Kamala Harris"]
+        """Set CLI validation dates, derive swing state formats, and pre-compute all parsed dates."""
+        # Set CLI validation dates based on other date fields
+        if not self.min_valid_date:
+            self.min_valid_date = self.earliest_available_data
+        if not self.max_valid_date:
+            self.max_valid_date = self.election_day
 
-        if self.swing_states is None:
-            self.swing_states = [
-                "Arizona",
-                "Georgia",
-                "Michigan",
-                "Nevada",
-                "North Carolina",
-                "Pennsylvania",
-                "Wisconsin",
-            ]
+        # Derive swing states list and electoral mapping from single source
+        self.swing_states = list(self.swing_states_info.keys())
+        self.swing_states_electoral_votes = {
+            info["code"]: info["electoral_votes"]
+            for info in self.swing_states_info.values()
+        }
 
-        if self.swing_states_electoral_votes is None:
-            self.swing_states_electoral_votes = {
-                "AZ": 11,
-                "GA": 16,
-                "NC": 16,
-                "NV": 6,
-                "PA": 19,
-                "WI": 10,
-                "MI": 15,
-            }
-
-    @property
-    def earliest_available_data_parsed(self):
-        """Return earliest available data date as datetime.date object."""
-        return datetime.strptime(self.earliest_available_data, "%Y-%m-%d").date()
-
-    @property
-    def biden_dropout_date_parsed(self):
-        """Return Biden dropout date as datetime.date object."""
-        return datetime.strptime(self.biden_dropout_date, "%Y-%m-%d").date()
-
-    @property
-    def forecast_start_date_parsed(self):
-        """Return forecast start date as datetime.date object."""
-        return datetime.strptime(self.forecast_start_date, "%Y-%m-%d").date()
-
-    @property
-    def election_day_parsed(self):
-        """Return election day as datetime.date object."""
-        return datetime.strptime(self.election_day, "%Y-%m-%d").date()
-
-    @property
-    def min_valid_date_parsed(self):
-        """Return minimum valid date as datetime.date object."""
-        return datetime.strptime(self.min_valid_date, "%Y-%m-%d").date()
-
-    @property
-    def max_valid_date_parsed(self):
-        """Return maximum valid date as datetime.date object."""
-        return datetime.strptime(self.max_valid_date, "%Y-%m-%d").date()
+        # Pre-compute all parsed dates (replaces 6 @property methods)
+        self.earliest_available_data_parsed = datetime.strptime(
+            self.earliest_available_data, "%Y-%m-%d"
+        ).date()
+        self.biden_dropout_date_parsed = datetime.strptime(
+            self.biden_dropout_date, "%Y-%m-%d"
+        ).date()
+        self.forecast_start_date_parsed = datetime.strptime(
+            self.forecast_start_date, "%Y-%m-%d"
+        ).date()
+        self.election_day_parsed = datetime.strptime(
+            self.election_day, "%Y-%m-%d"
+        ).date()
+        self.min_valid_date_parsed = datetime.strptime(
+            self.min_valid_date, "%Y-%m-%d"
+        ).date()
+        self.max_valid_date_parsed = datetime.strptime(
+            self.max_valid_date, "%Y-%m-%d"
+        ).date()

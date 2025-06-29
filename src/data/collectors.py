@@ -206,5 +206,5 @@ class PollingDataCollector:
     ) -> pd.DataFrame:
         """Legacy method - now redirects to polling cache."""
         # This method is kept for compatibility but now uses the polling cache
-        polling_cache_path = Path("data/polling_averages_cache.csv")
+        polling_cache_path = Path(self.config.polling_cache_path)
         return self._load_from_polling_cache(polling_cache_path, needed_dates)

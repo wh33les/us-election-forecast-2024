@@ -97,7 +97,6 @@ def parse_flexible_date(date_string: str) -> date:
 
 def determine_forecast_dates(args) -> List[date]:
     """Determine which dates to process based on command line arguments."""
-    # Use module-level config
     default_start = _config.forecast_start_date_parsed
     default_end = _config.election_day_parsed
 

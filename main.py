@@ -52,16 +52,8 @@ def main():
             print(f"❌ {e}")
         return
 
-    # Show what will be processed
-    if args.verbose or args.debug:
-        if len(forecast_dates) == 1:
-            logger.info(f"Processing single date: {forecast_dates[0]}")
-        else:
-            logger.info(
-                f"📅 Processing {len(forecast_dates)} dates: {forecast_dates[0]} to {forecast_dates[-1]}"
-            )
-    elif len(forecast_dates) == 1:
-        print(f"Processing forecast for {forecast_dates[0]}")
+    if len(forecast_dates) == 1:
+        print(f"Processing single date: {forecast_dates[0]}")
     else:
         print(
             f"Processing {len(forecast_dates)} dates: {forecast_dates[0]} to {forecast_dates[-1]}"

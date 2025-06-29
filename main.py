@@ -21,17 +21,20 @@ def main():
 
     # Show startup information
     if args.verbose:
-        logger.info("US presidential election 2024 forecast")
+        logger.info("U.S. election forecast 2024")
         logger.info("=" * 60)
         logger.info("This pipeline generates daily forecasts for the 2024 election.")
         logger.info(
             "Each day uses only polling data available up to that point (no future leakage)."
         )
         logger.info(
-            "Models: Holt exponential smoothing with hyperparameter optimization and random walk with drift baseline."
+            "Models (2 ct): Holt exponential smoothing with hyperparameter "
+            "optimization and random walk with drift baseline."
         )
         logger.info(
-            "Outputs: Comprehensive CSV storing previous forecasts, daily average cache file for quicker processing, images for current forecast and history of forecasts."
+            "Outputs (4 ct): Comprehensive CSV storing previous forecasts, "
+            "daily average cache file for quicker processing, "
+            "images for current forecast and history of forecasts."
         )
         logger.info("=" * 60)
     elif args.debug:
@@ -52,7 +55,7 @@ def main():
     # Show what will be processed
     if args.verbose or args.debug:
         if len(forecast_dates) == 1:
-            logger.info(f"📅 Processing single date: {forecast_dates[0]}")
+            logger.info(f"Processing single date: {forecast_dates[0]}")
         else:
             logger.info(
                 f"📅 Processing {len(forecast_dates)} dates: {forecast_dates[0]} to {forecast_dates[-1]}"

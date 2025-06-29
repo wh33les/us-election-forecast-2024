@@ -3,7 +3,7 @@
 
 from datetime import datetime
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional, Dict
 import numpy as np
 
 
@@ -19,7 +19,7 @@ class ModelConfig:
     # Grid search parameters for Holt smoothing
     grid_min: float = 0.0
     grid_max: float = 0.5
-    grid_step: float = 0.1  # Changed from 0.1 to 0.01 for finer grid search
+    grid_step: float = 0.1
 
     # Electoral college settings
     swing_state_electoral_votes: int = 93
@@ -36,34 +36,35 @@ class ModelConfig:
 class DataConfig:
     """Configuration for data sources and filtering."""
 
-    # Data file paths - Updated to match your setup
+    # Data file paths
     raw_data_path: str = "data/president_polls.csv"
     cleaned_data_path: str = "data/df_cleaned.csv"
     previous_forecasts_path: str = "data/previous.csv"
 
     # Output directories
-    forecast_images_dir: str = (
-        "outputs/forecast_images"  # Changed to match your original
-    )
-
-    # NEW: Additional file paths
+    forecast_images_dir: str = "outputs/forecast_images"
     debug_plots_dir: str = "outputs/debug_plots"
     comprehensive_dataset_path: str = "data/election_forecast_2024_comprehensive.csv"
     historical_plots_dir: str = "outputs/previous_forecasts"
 
     # Data filtering criteria
-    candidates: List[str] = None
+    candidates: Optional[List[str]] = None
     population_filter: str = "lv"  # likely voters
-    swing_states: List[str] = None
+    swing_states: Optional[List[str]] = None
     pollscore_threshold: float = 0.0  # negative pollscore only
 
-    # Date ranges
+    # Core date ranges
+    earliest_available_data: str = "2021-04-07"
     biden_dropout_date: str = "2024-07-21"
-    election_day: str = "2024-11-05"
     forecast_start_date: str = "2024-10-23"
+    election_day: str = "2024-11-05"
+
+    # CLI validation ranges
+    min_valid_date: str = "2024-10-01"  # Earliest acceptable input date
+    max_valid_date: str = "2024-11-30"  # Latest acceptable input date
 
     # Swing states electoral vote mapping
-    swing_states_electoral_votes: dict = None
+    swing_states_electoral_votes: Optional[Dict[str, int]] = None
 
     def __post_init__(self):
         """Initialize default values that depend on other attributes."""
@@ -93,9 +94,19 @@ class DataConfig:
             }
 
     @property
+    def earliest_available_data_parsed(self):
+        """Return earliest available data date as datetime.date object."""
+        return datetime.strptime(self.earliest_available_data, "%Y-%m-%d").date()
+
+    @property
     def biden_dropout_date_parsed(self):
         """Return Biden dropout date as datetime.date object."""
         return datetime.strptime(self.biden_dropout_date, "%Y-%m-%d").date()
+
+    @property
+    def forecast_start_date_parsed(self):
+        """Return forecast start date as datetime.date object."""
+        return datetime.strptime(self.forecast_start_date, "%Y-%m-%d").date()
 
     @property
     def election_day_parsed(self):
@@ -103,6 +114,11 @@ class DataConfig:
         return datetime.strptime(self.election_day, "%Y-%m-%d").date()
 
     @property
-    def forecast_start_date_parsed(self):
-        """Return forecast start date as datetime.date object."""
-        return datetime.strptime(self.forecast_start_date, "%Y-%m-%d").date()
+    def min_valid_date_parsed(self):
+        """Return minimum valid date as datetime.date object."""
+        return datetime.strptime(self.min_valid_date, "%Y-%m-%d").date()
+
+    @property
+    def max_valid_date_parsed(self):
+        """Return maximum valid date as datetime.date object."""
+        return datetime.strptime(self.max_valid_date, "%Y-%m-%d").date()

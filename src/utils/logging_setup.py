@@ -4,12 +4,6 @@
 import logging
 
 
-# src/utils/logging_setup.py
-"""Logging configuration utilities."""
-
-import logging
-
-
 def setup_logging(verbose=False, debug=False):
     """Setup logging with appropriate level for main.py and all src/ modules."""
     if debug:
@@ -18,11 +12,9 @@ def setup_logging(verbose=False, debug=False):
         format_str = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
     elif verbose:
         root_level = logging.INFO
-        your_level = logging.INFO
         format_str = "%(asctime)s - %(levelname)s - %(message)s"
     else:
         root_level = logging.WARNING
-        your_level = logging.WARNING
         format_str = "%(message)s"
 
     logging.basicConfig(level=root_level, format=format_str, force=True)
@@ -52,8 +44,6 @@ def setup_logging(verbose=False, debug=False):
             "statsmodels",
             "sklearn",
             "seaborn",
-            # "urllib3",
-            # "requests",
             "numpy",
         ]
 

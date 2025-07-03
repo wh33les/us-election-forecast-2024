@@ -38,7 +38,6 @@ class ForecastRunner:
     def run_forecasts(self, forecast_dates: Sequence[date]) -> bool:
         """Run forecasts for all specified dates."""
         logger.info("Starting pipeline...")
-        logger.info("Using incremental data loading with polling cache")
 
         forecast_history = (
             self.history_manager.load_forecast_history()
@@ -52,7 +51,6 @@ class ForecastRunner:
                     i + 1, len(forecast_dates), forecast_date
                 )
 
-                # UPDATED: Load data using polling manager
                 daily_averages = self.polling_manager.load_incremental_data(
                     forecast_date
                 )

@@ -27,19 +27,12 @@ class PollingDataManager:
 
         # Determine target date range
         biden_dropout = self.config.earliest_available_data_parsed
-        target_date_obj = (
-            pd.to_datetime(target_date).date()
-            if target_date
-            else self.config.election_day_parsed
-        )
+        target_date_obj = target_date or self.config.election_day_parsed
 
         # Only process data up to target date (no future data)
-        date_range_needed = pd.date_range(
-            start=biden_dropout, end=target_date_obj, freq="D"
+        available_dates = pd.date_range(
+            start=biden_dropout, end=target_date_obj, freq="D", inclusive="left"
         ).date
-        available_dates = [
-            d for d in date_range_needed if d < target_date_obj
-        ]  # Exclude target date itself
 
         # Check which dates need polling data processing
         missing_polling_dates = [
@@ -70,14 +63,21 @@ class PollingDataManager:
         filtered_data = self.filter_polling_data(new_raw_data)
         new_daily_averages = self.calculate_daily_averages(filtered_data)
 
-        # Update polling cache with new data
+        # Update polling cache with new data and get combined data
         if len(new_daily_averages) > 0:
-            self._update_polling_cache(polling_cache_path, new_daily_averages)
+            combined_cache = self._update_polling_cache(
+                polling_cache_path, new_daily_averages
+            )
 
-        # Load and return all requested data from cache
-        combined_averages = self._load_from_polling_cache(
-            polling_cache_path, available_dates
-        )
+            # Filter to only requested dates
+            combined_averages = combined_cache[
+                combined_cache["end_date"].isin(available_dates)
+            ].copy()
+        else:
+            # No new data to add, load from existing cache
+            combined_averages = self._load_from_polling_cache(
+                polling_cache_path, available_dates
+            )
 
         logger.info(
             f"Final daily averages: {len(combined_averages)} total records for {len(available_dates)} dates"
@@ -133,25 +133,19 @@ class PollingDataManager:
         """Filter polling data based on configuration criteria."""
         logger.info("Filtering polling data...")
 
-        # Extract relevant columns and candidates
+        # All filters in one step
         df = raw_data.loc[
             (raw_data["candidate_name"].isin(self.config.candidates))
-            & (raw_data["population"] == self.config.population_filter),
+            & (raw_data["population"] == self.config.population_filter)
+            & (
+                raw_data["state"].isin(self.config.get_swing_state_names())
+                | raw_data["state"].isnull()
+            )
+            & (raw_data["pollscore"] < self.config.pollscore_threshold),
             ["pollscore", "state", "candidate_name", "end_date", "pct"],
         ].drop_duplicates()
 
-        logger.info(f"After candidate and population filter: {len(df)} records")
-
-        # Restrict to national and swing state polls
-        df = df.loc[
-            df["state"].isin(self.config.get_swing_state_names()) | df["state"].isnull()
-        ]
-        logger.info(f"After geographic filter: {len(df)} records")
-
-        # Only use polls with negative pollscore
-        df = df.loc[df["pollscore"] < self.config.pollscore_threshold]
-        logger.info(f"After pollscore filter: {len(df)} records")
-
+        logger.info(f"After all filters: {len(df)} records")
         return df
 
     def calculate_daily_averages(self, filtered_data: pd.DataFrame) -> pd.DataFrame:
@@ -159,26 +153,12 @@ class PollingDataManager:
         logger.info("Calculating daily averages...")
 
         # Group by date and candidate to get daily averages
-        daily_average = (
+        df_cleaned = (
             filtered_data.groupby(["end_date", "candidate_name"])["pct"]
             .mean()
             .reset_index(name="daily_average")
-        )
-
-        # Merge back with original data
-        df_with_averages = pd.merge(filtered_data, daily_average)
-
-        # Create cleaned dataframe with just what we need
-        df_cleaned = df_with_averages[
-            ["candidate_name", "end_date", "daily_average"]
-        ].drop_duplicates()
-
-        # Sort by candidate and date
-        df_cleaned.sort_values(
-            ["candidate_name", "end_date"],
-            ascending=[True, True],
-            inplace=True,
-            ignore_index=True,
+            .sort_values(["candidate_name", "end_date"])
+            .reset_index(drop=True)
         )
 
         logger.info(
@@ -237,8 +217,8 @@ class PollingDataManager:
 
     def _update_polling_cache(
         self, polling_cache_path: Path, new_daily_averages: pd.DataFrame
-    ):
-        """Update polling cache with new daily averages."""
+    ) -> pd.DataFrame:
+        """Update polling cache with new daily averages and return combined data."""
         try:
             if polling_cache_path.exists():
                 # Load existing cache
@@ -277,6 +257,8 @@ class PollingDataManager:
             logger.info(
                 f"Updated polling cache: added {len(new_daily_averages)} new records"
             )
+
+            return combined_cache
 
         except Exception as e:
             logger.error(f"Error updating polling cache: {e}")

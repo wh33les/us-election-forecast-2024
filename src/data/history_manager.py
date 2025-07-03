@@ -17,34 +17,25 @@ class HistoryManager:
         self.config = data_config
         self.election_day = data_config.election_day_parsed
 
-    def check_forecast_history_status(self):
-        """Log status of forecast history file."""
-        history_path = Path(self.config.forecast_history_path)
-        history_exists = history_path.exists()
-
-        logger.info("Forecast history status:")
-        logger.info(
-            f"   - Forecast history: {'EXISTS' if history_exists else '❌ NOT FOUND'} ({history_path})"
-        )
-
-        if history_exists:
-            logger.info("   Using existing forecast history for faster processing")
-        else:
-            logger.info("   No forecast history found, will create new dataset")
-
     def load_forecast_history(self) -> pd.DataFrame:
         """Load existing forecast history dataset or create empty one."""
         history_path = Path(self.config.forecast_history_path)
 
         if history_path.exists():
-            logger.info("Loading existing forecast history dataset...")
-            df = pd.read_csv(history_path, low_memory=False)
-            df["forecast_date"] = pd.to_datetime(df["forecast_date"]).dt.date
-            logger.info(
-                f"Loaded {len(df)} records from {df['forecast_date'].nunique()} forecast runs"
-            )
-            return df
+            logger.info(f"📁 Loading existing forecast history from {history_path}")
+            try:
+                df = pd.read_csv(history_path, low_memory=False)
+                df["forecast_date"] = pd.to_datetime(df["forecast_date"]).dt.date
+                logger.info(
+                    f"✅ Loaded {len(df)} records from {df['forecast_date'].nunique()} forecast runs"
+                )
+                return df
+            except Exception as e:
+                logger.error(f"❌ Error loading forecast history: {e}")
+                logger.info("Creating new forecast history dataset...")
+                return pd.DataFrame()
         else:
+            logger.info(f"📁 No forecast history found at {history_path}")
             logger.info("Creating new forecast history dataset...")
             return pd.DataFrame()
 

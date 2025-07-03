@@ -17,13 +17,9 @@ class ResultFormatter:
     def log_forecast_start(self, day_num, total_days, forecast_date):
         """Log the start of a forecast run."""
         date_str = forecast_date.strftime("%a %b %d, %Y")
-
-        if self.verbose:
-            logger.info(f"\nDAY {day_num}/{total_days}: {date_str}")
-        else:
-            logger.info(f"\n{'='*60}")
-            logger.info(f"Forecast for {forecast_date} ({day_num}/{total_days})")
-            logger.info(f"{'='*60}")
+        logger.info(f"\n{'='*40}")
+        logger.info(f"DAY {day_num}/{total_days}: {date_str}")
+        logger.info(f"{'='*40}")
 
     def log_forecast_success(self, forecast_date):
         """Log successful completion of a forecast."""

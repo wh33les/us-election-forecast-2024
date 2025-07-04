@@ -32,7 +32,7 @@ class PollingDataManager:
         # Only process data up to target date (no future data)
         available_dates = pd.date_range(
             start=biden_dropout, end=target_date_obj, freq="D", inclusive="left"
-        ).date
+        ).date.tolist()
 
         # Check which dates need polling data processing
         missing_polling_dates = [

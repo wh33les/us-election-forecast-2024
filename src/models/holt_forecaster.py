@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import logging
 import os
-from typing import Dict
+from typing import Dict, Any
 from statsmodels.tsa.holtwinters import Holt, ExponentialSmoothing
 from sklearn.model_selection import TimeSeriesSplit
 import matplotlib.pyplot as plt
@@ -71,7 +71,7 @@ class HoltElectionForecaster:
         baseline_mase_harris = np.zeros(self.model_config.n_splits)
 
         split_idx = 0
-        for train_index, test_index in kfold.split(x_train):
+        for train_index, test_index in kfold.split(np.array(x_train).reshape(-1, 1)):
             trump_train = trump_data.iloc[train_index]
             trump_test = trump_data.iloc[test_index]
             harris_train = harris_data.iloc[train_index]
@@ -86,13 +86,13 @@ class HoltElectionForecaster:
             )
 
             baseline_mase_trump[split_idx] = self.mase(
-                trump_train.daily_average.values,
-                trump_test.daily_average.values,
+                np.array(trump_train.daily_average.values),  # Convert to numpy
+                np.array(trump_test.daily_average.values),  # Convert to numpy
                 trump_baseline_forecast,
             )
             baseline_mase_harris[split_idx] = self.mase(
-                harris_train.daily_average.values,
-                harris_test.daily_average.values,
+                np.array(harris_train.daily_average.values),  # Convert to numpy
+                np.array(harris_test.daily_average.values),  # Convert to numpy
                 harris_baseline_forecast,
             )
 
@@ -108,8 +108,8 @@ class HoltElectionForecaster:
                         )
                         trump_forecast = trump_model.forecast(len(trump_test))
                         exp_mase_trump[split_idx, alpha_idx, beta_idx] = self.mase(
-                            trump_train.daily_average.values,
-                            trump_test.daily_average.values,
+                            np.array(trump_train.daily_average.values),
+                            np.array(trump_test.daily_average.values),
                             trump_forecast,
                         )
 
@@ -119,8 +119,8 @@ class HoltElectionForecaster:
                         )
                         harris_forecast = harris_model.forecast(len(harris_test))
                         exp_mase_harris[split_idx, alpha_idx, beta_idx] = self.mase(
-                            harris_train.daily_average.values,
-                            harris_test.daily_average.values,
+                            np.array(harris_train.daily_average.values),
+                            np.array(harris_test.daily_average.values),
                             harris_forecast,
                         )
 
@@ -171,7 +171,7 @@ class HoltElectionForecaster:
         """Generate baseline forecast for cross-validation."""
         values = train_data.daily_average.values
         if len(values) < 2:
-            return np.full(horizon, values[-1] if len(values) > 0 else 45.0)
+            return np.full(horizon, values[-1])
 
         # Linear drift calculation
         drift = (values[-1] - values[0]) / len(values)
@@ -205,7 +205,7 @@ class HoltElectionForecaster:
 
     def fit_final_models(
         self, trump_data: pd.DataFrame, harris_data: pd.DataFrame
-    ) -> Dict[str, Holt]:
+    ) -> Dict[str, Any]:
         """Fit final Holt models using best parameters."""
         logger.info("Fitting final Holt models...")
 

@@ -28,10 +28,9 @@ class ForecastRunner:
         self.debug = debug
         self.election_day = data_config.election_day_parsed
 
-        # UPDATED: Clear, single-purpose managers
         self.polling_manager = PollingDataManager(data_config)
         self.history_manager = HistoryManager(data_config)
-        self.calculator = ElectoralCollegeCalculator(model_config)
+        self.calculator = ElectoralCollegeCalculator(model_config, data_config)
         self.plotter = ElectionPlotter(data_config)
         self.formatter = ResultFormatter(verbose, debug)
 
@@ -165,13 +164,12 @@ class ForecastRunner:
         forecaster = HoltElectionForecaster(self.model_config, self.data_config)
         x_train = pd.Series(range(len(trump_train)))
 
-        logger.info("Running hyperparameter optimization...")
         best_params = forecaster.grid_search_hyperparameters(
             trump_train, harris_train, x_train
         )
 
         logger.info("Fitting final models...")
-        fitted_models = forecaster.fit_final_models(trump_train, harris_train)
+        forecaster.fit_final_models(trump_train, harris_train)
 
         # Calculate horizons
         # pylint: disable=no-member  # False positive: DatetimeIndex.date is valid but pylint doesn't recognize it
@@ -208,9 +206,10 @@ class ForecastRunner:
                 holdout_predictions, trump_holdout, harris_holdout
             )
 
-        # Calculate electoral outcomes (simplified - only on Election Day)
-        electoral_results = self._calculate_electoral_outcomes(
-            forecasts, baselines, forecast_date
+        electoral_results = (
+            self.calculator.calculate_electoral_outcomes_if_election_day(
+                forecasts, baselines, forecast_date
+            )
         )
 
         # Prepare plotting data
@@ -242,27 +241,30 @@ class ForecastRunner:
         self, all_predictions: Dict, all_baselines: Dict, holdout_horizon: int
     ) -> tuple:
         """Split predictions into holdout and forecast periods."""
+        candidates = ["trump", "harris"]
+
         if holdout_horizon > 0:
+            # Split using dictionary comprehensions
             forecasts = {
-                "trump": all_predictions["trump"][holdout_horizon:],
-                "harris": all_predictions["harris"][holdout_horizon:],
+                candidate: all_predictions[candidate][holdout_horizon:]
+                for candidate in candidates
             }
             baselines = {
-                "trump": all_baselines["trump"][holdout_horizon:],
-                "harris": all_baselines["harris"][holdout_horizon:],
+                candidate: all_baselines[candidate][holdout_horizon:]
+                for candidate in candidates
             }
             holdout_predictions = {
-                "trump": all_predictions["trump"][:holdout_horizon],
-                "harris": all_predictions["harris"][:holdout_horizon],
+                candidate: all_predictions[candidate][:holdout_horizon]
+                for candidate in candidates
             }
             holdout_baselines = {
-                "trump": all_baselines["trump"][:holdout_horizon],
-                "harris": all_baselines["harris"][:holdout_horizon],
+                candidate: all_baselines[candidate][:holdout_horizon]
+                for candidate in candidates
             }
         else:
             forecasts = all_predictions
             baselines = all_baselines
-            holdout_predictions = {"trump": np.array([]), "harris": np.array([])}
+            holdout_predictions = {candidate: np.array([]) for candidate in candidates}
             holdout_baselines = None
 
         return forecasts, baselines, holdout_predictions, holdout_baselines
@@ -286,39 +288,6 @@ class ForecastRunner:
             logger.debug(
                 f"Holdout validation: Trump error={trump_error:.2f}%, Harris error={harris_error:.2f}%"
             )
-
-    def _calculate_electoral_outcomes(
-        self, forecasts: Dict, baselines: Dict, forecast_date: date
-    ) -> Optional[Dict]:
-        """Only calculate electoral results on Election Day."""
-        if forecast_date != self.election_day:
-            return None  # No electoral calculation needed
-
-        # Only run electoral college math on Election Day
-        if forecasts["trump"].size > 0 and forecasts["harris"].size > 0:
-            electoral_data = pd.DataFrame(
-                [
-                    {
-                        "candidate_name": "Donald Trump",
-                        "end_date": self.election_day,
-                        "daily_average": None,
-                        "model": forecasts["trump"][-1],
-                        "drift_pred": baselines["trump"][-1],
-                    },
-                    {
-                        "candidate_name": "Kamala Harris",
-                        "end_date": self.election_day,
-                        "daily_average": None,
-                        "model": forecasts["harris"][-1],
-                        "drift_pred": baselines["harris"][-1],
-                    },
-                ]
-            )
-
-            logger.info("Calculating electoral college outcomes...")
-            return self.calculator.calculate_all_outcomes(electoral_data)
-
-        return None
 
     def _prepare_plotting_data(
         self,

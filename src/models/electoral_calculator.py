@@ -2,17 +2,19 @@
 """Electoral college calculation for election forecasting."""
 
 import pandas as pd
+from datetime import date
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ElectoralCollegeCalculator:
-    """Calculate electoral college outcomes from polling predictions."""
+    def __init__(self, model_config, data_config):
+        self.model_config = model_config
+        self.data_config = data_config
+        self.election_day = data_config.election_day_parsed  # From data_config
 
-    def __init__(self, config):
-        self.config = config
         self.swing_states_map = {
             "AZ": 11,
             "GA": 16,
@@ -22,47 +24,78 @@ class ElectoralCollegeCalculator:
             "WI": 10,
             "MI": 15,
         }
-        # UPDATED: Use config instead of hardcoded values
-        self.trump_safe_votes = config.trump_safe_electoral_votes
-        self.harris_safe_votes = config.harris_safe_electoral_votes
-        self.total_swing_votes = config.swing_state_electoral_votes
 
-    def calculate_all_outcomes(self, df_cleaned: pd.DataFrame) -> Dict[str, Dict]:
-        """Calculate electoral outcomes for both model and baseline predictions."""
-        logger.info("Calculating electoral college outcomes...")
+        # Electoral vote counts from model_config
+        self.trump_safe_votes = model_config.trump_safe_electoral_votes
+        self.harris_safe_votes = model_config.harris_safe_electoral_votes
+        self.total_swing_votes = model_config.swing_state_electoral_votes
 
-        predictions = self.extract_final_predictions(df_cleaned)
+    def calculate_electoral_outcomes_if_election_day(
+        self, forecasts: Dict, baselines: Dict, forecast_date: date
+    ) -> Optional[Dict]:
+        """Calculate electoral outcomes only on Election Day."""
+        if forecast_date != self.election_day:
+            return None
 
-        # Calculate outcomes for both model and baseline
-        model_outcome = self.calculate_swing_state_allocation(
-            predictions["model"]["trump_normalized"],
-            predictions["model"]["harris_normalized"],
-        )
-        model_outcome.update(
-            {
-                "trump_vote_pct": predictions["model"]["trump_raw"],
-                "harris_vote_pct": predictions["model"]["harris_raw"],
+        # Only run electoral college math on Election Day
+        if forecasts["trump"].size > 0 and forecasts["harris"].size > 0:
+            # Create electoral data (data preparation)
+            electoral_data = pd.DataFrame(
+                [
+                    {
+                        "candidate_name": "Donald Trump",
+                        "end_date": self.election_day,
+                        "daily_average": None,
+                        "model": forecasts["trump"][-1],
+                        "drift_pred": baselines["trump"][-1],
+                    },
+                    {
+                        "candidate_name": "Kamala Harris",
+                        "end_date": self.election_day,
+                        "daily_average": None,
+                        "model": forecasts["harris"][-1],
+                        "drift_pred": baselines["harris"][-1],
+                    },
+                ]
+            )
+
+            logger.info("Calculating electoral college outcomes...")
+
+            # Electoral calculation logic (previously in calculate_all_outcomes)
+            predictions = self._extract_final_predictions(electoral_data)
+
+            # Calculate outcomes for both model and baseline
+            model_outcome = self._calculate_swing_state_allocation(
+                predictions["model"]["trump_normalized"],
+                predictions["model"]["harris_normalized"],
+            )
+            model_outcome.update(
+                {
+                    "trump_vote_pct": predictions["model"]["trump_raw"],
+                    "harris_vote_pct": predictions["model"]["harris_raw"],
+                }
+            )
+
+            baseline_outcome = self._calculate_swing_state_allocation(
+                predictions["baseline"]["trump_normalized"],
+                predictions["baseline"]["harris_normalized"],
+            )
+            baseline_outcome.update(
+                {
+                    "trump_vote_pct": predictions["baseline"]["trump_raw"],
+                    "harris_vote_pct": predictions["baseline"]["harris_raw"],
+                }
+            )
+
+            return {
+                "model": model_outcome,
+                "baseline": baseline_outcome,
+                "predictions": predictions,
             }
-        )
 
-        baseline_outcome = self.calculate_swing_state_allocation(
-            predictions["baseline"]["trump_normalized"],
-            predictions["baseline"]["harris_normalized"],
-        )
-        baseline_outcome.update(
-            {
-                "trump_vote_pct": predictions["baseline"]["trump_raw"],
-                "harris_vote_pct": predictions["baseline"]["harris_raw"],
-            }
-        )
+        return None
 
-        return {
-            "model": model_outcome,
-            "baseline": baseline_outcome,
-            "predictions": predictions,
-        }
-
-    def extract_final_predictions(
+    def _extract_final_predictions(
         self, df_cleaned: pd.DataFrame
     ) -> Dict[str, Dict[str, float]]:
         """Extract final prediction percentages from cleaned dataframe."""
@@ -106,7 +139,7 @@ class ElectoralCollegeCalculator:
             logger.error(f"Error extracting predictions: {e}")
             raise
 
-    def calculate_swing_state_allocation(
+    def _calculate_swing_state_allocation(
         self, trump_share: float, harris_share: float
     ) -> Dict:
         """Calculate swing state allocation based on vote shares."""

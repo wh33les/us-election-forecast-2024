@@ -301,32 +301,8 @@ class ForecastRunner:
         holdout_baselines: Optional[Dict],
     ) -> Dict:
         """Prepare data for plotting functions."""
-        # Create complete historical datasets
-        trump_dfs = [df for df in [trump_train, trump_holdout] if not df.empty]
-        harris_dfs = [df for df in [harris_train, harris_holdout] if not df.empty]
 
-        trump_complete = (
-            pd.concat(trump_dfs, ignore_index=True).sort_values("end_date")
-            if trump_dfs
-            else pd.DataFrame()
-        )
-        harris_complete = (
-            pd.concat(harris_dfs, ignore_index=True).sort_values("end_date")
-            if harris_dfs
-            else pd.DataFrame()
-        )
-
-        # Remove duplicates
-        if not trump_complete.empty:
-            trump_complete = trump_complete.drop_duplicates(
-                subset=["end_date"], keep="first"
-            ).reset_index(drop=True)
-        if not harris_complete.empty:
-            harris_complete = harris_complete.drop_duplicates(
-                subset=["end_date"], keep="first"
-            ).reset_index(drop=True)
-
-        # Create complete fitted values
+        # Create complete fitted values (combining training fits + holdout predictions)
         complete_fitted_values = {
             "trump": list(fitted_values["trump"]) + list(holdout_predictions["trump"]),
             "harris": list(fitted_values["harris"])
@@ -334,32 +310,21 @@ class ForecastRunner:
         }
 
         # Ensure fitted values match dataset lengths
+        trump_total_length = len(trump_train) + len(trump_holdout)
+        harris_total_length = len(harris_train) + len(harris_holdout)
+
         complete_fitted_values = {
-            "trump": (
-                complete_fitted_values["trump"][: len(trump_complete)]
-                if not trump_complete.empty
-                else []
-            ),
-            "harris": (
-                complete_fitted_values["harris"][: len(harris_complete)]
-                if not harris_complete.empty
-                else []
-            ),
+            "trump": complete_fitted_values["trump"][:trump_total_length],
+            "harris": complete_fitted_values["harris"][:harris_total_length],
         }
 
-        # Create historical dates
-        historical_dates = []
-        if not trump_complete.empty:
-            historical_dates.extend(trump_complete["end_date"].tolist())
-        if not harris_complete.empty:
-            historical_dates.extend(harris_complete["end_date"].tolist())
-        historical_dates = sorted(set(historical_dates)) if historical_dates else []
-
         return {
-            "trump_complete": trump_complete,
-            "harris_complete": harris_complete,
+            # Pass split datasets directly instead of recombining
+            "trump_train": trump_train,
+            "trump_holdout": trump_holdout,
+            "harris_train": harris_train,
+            "harris_holdout": harris_holdout,
             "complete_fitted_values": complete_fitted_values,
-            "historical_dates": historical_dates,
             "plotting_days_till_then": forecast_dates_list,
             "plotting_holdout_baselines": holdout_baselines,
         }
@@ -374,7 +339,7 @@ class ForecastRunner:
         """Update dataset and create visualizations."""
         logger.info("Updating forecast history...")
 
-        # Combine training data
+        # Combine training data for history record
         train_dfs = [
             df
             for df in [
@@ -387,10 +352,30 @@ class ForecastRunner:
             pd.concat(train_dfs, ignore_index=True) if train_dfs else pd.DataFrame()
         )
 
-        # UPDATED: Create forecast record using history manager
+        # Create dates list for history record
+        historical_dates = []
+        if not forecast_results["trump_train"].empty:
+            historical_dates.extend(
+                forecast_results["trump_train"]["end_date"].tolist()
+            )
+        if not forecast_results["harris_train"].empty:
+            historical_dates.extend(
+                forecast_results["harris_train"]["end_date"].tolist()
+            )
+        if not forecast_results["trump_holdout"].empty:
+            historical_dates.extend(
+                forecast_results["trump_holdout"]["end_date"].tolist()
+            )
+        if not forecast_results["harris_holdout"].empty:
+            historical_dates.extend(
+                forecast_results["harris_holdout"]["end_date"].tolist()
+            )
+        historical_dates = sorted(set(historical_dates)) if historical_dates else []
+
+        # Create forecast record using history manager
         daily_forecast_record = self.history_manager.create_forecast_record(
             training_data,
-            forecast_results["historical_dates"],
+            historical_dates,
             forecast_results["days_till_then"],
             forecast_results["fitted_values"],
             forecast_results["forecasts"],
@@ -419,7 +404,7 @@ class ForecastRunner:
                 else daily_forecast_record
             )
 
-        # UPDATED: Save dataset using history manager
+        # Save dataset using history manager
         forecast_history = self.history_manager.save_forecast_history(forecast_history)
 
         # Generate visualizations
@@ -447,15 +432,15 @@ class ForecastRunner:
 
         try:
             self.plotter.plot_main_forecast(
-                forecast_results["historical_dates"],
-                forecast_results["plotting_days_till_then"],
-                forecast_results["trump_complete"],
-                forecast_results["harris_complete"],
-                forecast_results["forecasts"],
-                forecast_results["baselines"],
-                forecast_results["complete_fitted_values"],
-                forecast_results["best_params"],
-                forecast_results["plotting_days_till_then"],
+                trump_train_data=forecast_results["trump_train"],
+                trump_holdout_data=forecast_results["trump_holdout"],
+                harris_train_data=forecast_results["harris_train"],
+                harris_holdout_data=forecast_results["harris_holdout"],
+                forecasts=forecast_results["forecasts"],
+                baselines=forecast_results["baselines"],
+                fitted_values=forecast_results["complete_fitted_values"],
+                best_params=forecast_results["best_params"],
+                forecast_period_dates=forecast_results["plotting_days_till_then"],
                 forecast_date=forecast_date,
                 training_end_date=forecast_results["train_cutoff_date"],
                 holdout_baselines=forecast_results["plotting_holdout_baselines"],
@@ -464,7 +449,7 @@ class ForecastRunner:
         except Exception as e:
             logger.error(f"Failed to create forecast plot: {e}")
 
-        # UPDATED: Historical forecasts plot using history manager
+        # Historical forecasts plot using history manager
         historical_data = self.history_manager.create_historical_data_for_plotting(
             forecast_history, forecast_date
         )

@@ -18,22 +18,22 @@ def enhanced_prefilter_polling_data():
     original_file = "data/raw_polling_data.csv"
     backup_file = "data/raw_polling_data_backup.csv"
 
-    print("🚀 Enhanced pre-filtering of polling data...")
+    print("Enhanced pre-filtering of polling data...")
     print("=" * 50)
 
     # 1. Create backup
-    print("📋 Creating backup...")
+    print("Creating backup...")
     shutil.copy2(original_file, backup_file)
-    print(f"✅ Backup saved as: {backup_file}")
+    print(f"Backup saved as: {backup_file}")
 
     # 2. Analyze original file
-    print("📁 Analyzing original data...")
+    print("Analyzing original data...")
     original_size_mb = Path(original_file).stat().st_size / (1024 * 1024)
 
     # Read just first row to get column info
     sample = pd.read_csv(original_file, nrows=1)
     total_columns = len(sample.columns)
-    print(f"📊 Original: {total_columns} columns, {original_size_mb:.1f} MB")
+    print(f"Original: {total_columns} columns, {original_size_mb:.1f} MB")
 
     # 3. Define columns we actually need
     essential_columns = [
@@ -45,12 +45,12 @@ def enhanced_prefilter_polling_data():
         "population",  # Used for population filtering (lv, rv, a)
     ]
 
-    print(f"🎯 Keeping {len(essential_columns)}/{total_columns} columns:")
+    print(f"Keeping {len(essential_columns)}/{total_columns} columns:")
     for col in essential_columns:
         print(f"   • {col}")
 
     # 4. Read data with only essential columns (first optimization!)
-    print(f"\n📥 Loading data with column selection...")
+    print(f"\nLoading data with column selection...")
     df = pd.read_csv(original_file, usecols=essential_columns)
     print(f"   Column reduction: {total_columns} → {len(essential_columns)} columns")
 
@@ -62,7 +62,7 @@ def enhanced_prefilter_polling_data():
     biden_dropout = config.earliest_available_data_parsed
 
     # 6. Apply row filters
-    print(f"\n🎯 Applying row filters...")
+    print(f"\n Applying row filters...")
 
     # Filter by date (Biden dropout and after)
     df_filtered = df[df["end_date"] >= biden_dropout].copy()
@@ -82,7 +82,7 @@ def enhanced_prefilter_polling_data():
     row_reduction = (1 - final_rows / original_rows) * 100
     col_reduction = (1 - len(essential_columns) / total_columns) * 100
 
-    print(f"\n📉 Optimization summary:")
+    print(f"\n Optimization summary:")
     print(
         f"   Row reduction: {original_rows:,} -> {final_rows:,} ({row_reduction:.1f}% reduction)"
     )
@@ -91,18 +91,18 @@ def enhanced_prefilter_polling_data():
     )
 
     # 8. Save optimized file
-    print(f"\n💾 Saving optimized file...")
+    print(f"\n Saving optimized file...")
     df_filtered.to_csv(original_file, index=False)
 
     new_size_mb = Path(original_file).stat().st_size / (1024 * 1024)
     total_reduction = (1 - new_size_mb / original_size_mb) * 100
 
     print(
-        f"✅ File size: {original_size_mb:.1f} MB → {new_size_mb:.1f} MB ({total_reduction:.1f}% reduction)"
+        f" File size: {original_size_mb:.1f} MB → {new_size_mb:.1f} MB ({total_reduction:.1f}% reduction)"
     )
 
     # 9. Show data quality preserved for pipeline
-    print(f"\n🔧 Data preserved for pipeline filtering:")
+    print(f"\n Data preserved for pipeline filtering:")
     if len(df_filtered) > 0:
         population_types = df_filtered["population"].value_counts()
         print(f"   Population types: {list(population_types.index)}")
@@ -122,7 +122,7 @@ def enhanced_prefilter_polling_data():
         print(f"   Date range: {date_range}")
 
     # 10. Show sample of optimized data
-    print(f"\n📋 Sample of optimized data:")
+    print(f"\n Sample of optimized data:")
     if len(df_filtered) > 0:
         print(df_filtered.head(3).to_string())
 
@@ -154,13 +154,13 @@ BACKUP LOCATION: {backup_file}
     with open("data/PREFILTER_SUMMARY.txt", "w", encoding="utf-8") as f:
         f.write(summary_content)
 
-    print(f"\n🎉 Enhanced pre-filtering complete!")
+    print(f"\n Enhanced pre-filtering complete!")
     print(
-        f"📊 Total reduction: {total_reduction:.1f}% ({original_size_mb:.1f} MB -> {new_size_mb:.1f} MB)"
+        f" Total reduction: {total_reduction:.1f}% ({original_size_mb:.1f} MB -> {new_size_mb:.1f} MB)"
     )
-    print(f"🔧 Your pipeline will work exactly the same, just much faster!")
-    print(f"📁 Backup: {backup_file}")
-    print(f"📄 Summary: data/PREFILTER_SUMMARY.txt")
+    print(f" Your pipeline will work exactly the same, just much faster!")
+    print(f" Backup: {backup_file}")
+    print(f" Summary: data/PREFILTER_SUMMARY.txt")
 
 
 if __name__ == "__main__":

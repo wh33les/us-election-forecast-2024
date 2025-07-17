@@ -44,7 +44,7 @@ class PlotConfig:
     model_marker: str = "o"
     baseline_marker: str = "s"
     model_marker_size: int = 4
-    baseline_marker_size: int = 3
+    baseline_marker_size: int = 4
 
     # Line styles
     polling_line_style: str = "-"
@@ -55,7 +55,7 @@ class PlotConfig:
 
     # Annotation positions (as tuples of (x, y) coordinates)
     hyperparameter_annotation_pos: Tuple[str, float] = ("2024-07-25", 42.3)
-    mase_annotation_pos: Tuple[str, float] = ("2024-08-17", 42.3)
+    mase_annotation_pos: Tuple[str, float] = ("2024-08-17", 42.73)
 
     # Legend settings
     legend_location: str = "lower right"
@@ -126,9 +126,12 @@ class ModelConfig:
     test_size: int = 7
 
     # Grid search parameters for Holt smoothing
-    grid_min: float = 0.0
-    grid_max: float = 0.5
-    grid_step: float = 0.1
+    alpha_grid_min: float = 0.05
+    alpha_grid_max: float = 0.5
+    alpha_grid_step: float = 0.05
+    beta_grid_min: float = 0.05
+    beta_grid_max: float = 0.3
+    beta_grid_step: float = 0.05
 
     # Electoral college settings
     swing_state_electoral_votes: int = 93
@@ -136,9 +139,14 @@ class ModelConfig:
     harris_safe_electoral_votes: int = 226
 
     @property
-    def grid_numbers(self):
+    def alpha_grid_numbers(self):
         """Generate grid search parameter range."""
-        return np.arange(self.grid_min, self.grid_max, self.grid_step)
+        return np.arange(self.alpha_grid_min, self.alpha_grid_max, self.alpha_grid_step)
+
+    @property
+    def beta_grid_numbers(self):
+        """Generate grid search parameter range."""
+        return np.arange(self.beta_grid_min, self.beta_grid_max, self.beta_grid_step)
 
 
 @dataclass

@@ -53,17 +53,26 @@ class HoltElectionForecaster:
         """Perform grid search for optimal Holt smoothing parameters with baseline comparison."""
         logger.info("Starting hyperparameter grid search with baseline evaluation...")
 
-        grid_numbers = self.model_config.grid_numbers
+        alpha_grid_numbers = self.model_config.alpha_grid_numbers
+        beta_grid_numbers = self.model_config.beta_grid_numbers
         kfold = TimeSeriesSplit(
             n_splits=self.model_config.n_splits, test_size=self.model_config.test_size
         )
 
         # Initialize error arrays for Holt models
         exp_mase_trump = np.zeros(
-            (self.model_config.n_splits, len(grid_numbers), len(grid_numbers))
+            (
+                self.model_config.n_splits,
+                len(alpha_grid_numbers),
+                len(beta_grid_numbers),
+            )
         )
         exp_mase_harris = np.zeros(
-            (self.model_config.n_splits, len(grid_numbers), len(grid_numbers))
+            (
+                self.model_config.n_splits,
+                len(alpha_grid_numbers),
+                len(beta_grid_numbers),
+            )
         )
 
         # Initialize arrays for baseline models
@@ -98,9 +107,9 @@ class HoltElectionForecaster:
 
             # Holt model grid search
             alpha_idx = 0
-            for alpha in grid_numbers:
+            for alpha in alpha_grid_numbers:
                 beta_idx = 0
-                for beta in grid_numbers:
+                for beta in beta_grid_numbers:
                     try:
                         # Fit Trump model
                         trump_model = Holt(trump_data.daily_average.values).fit(
@@ -148,14 +157,14 @@ class HoltElectionForecaster:
         # Include baseline MASE in results
         best_params = {
             "trump": {
-                "alpha": grid_numbers[trump_best_idx[0]],
-                "beta": grid_numbers[trump_best_idx[1]],
+                "alpha": alpha_grid_numbers[trump_best_idx[0]],
+                "beta": beta_grid_numbers[trump_best_idx[1]],
                 "mase": np.mean(exp_mase_trump, axis=0)[trump_best_idx],
                 "baseline_mase": np.mean(baseline_mase_trump),
             },
             "harris": {
-                "alpha": grid_numbers[harris_best_idx[0]],
-                "beta": grid_numbers[harris_best_idx[1]],
+                "alpha": alpha_grid_numbers[harris_best_idx[0]],
+                "beta": beta_grid_numbers[harris_best_idx[1]],
                 "mase": np.mean(exp_mase_harris, axis=0)[harris_best_idx],
                 "baseline_mase": np.mean(baseline_mase_harris),
             },

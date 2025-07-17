@@ -68,7 +68,7 @@
             predictions. The predictions also include who will win which swing states (listed with their abbreviations).
             The rest of the page consists of previous days' forecasts, followed by information about my methodology.
         </p>
-        <p>Finally, you can view the source for my predictions and plots for each day in <a
+        <p>You can view the source for my predictions as well as plots for each day in <a
                 href="https://github.com/wh33les/us-election-forecast-2024">my GitHub repository for this project.</a>
         </p>
     </div>
@@ -82,14 +82,14 @@
                 <td><span style="font-size: 18px"><u>FiveThirtyEight</u></span></td>
             </tr>
             <tr>
-                <td style="color:Red;">Trump: 268 (47.4%) AZ GA NC NV</td>
-                <td style="color:Red;"><!--<span style="font-size: 18px"><b>-->Trump: 268 (49.8%) AZ GA NC
+                <td style="color:Red;">Trump: 262 (47.5%) AZ GA NC</td>
+                <td style="color:Red;"><!--<span style="font-size: 18px"><b>-->Trump: 262 (47.7%) AZ GA NC
                     NV<!--</b></span>--></td>
                 <td style="color:Red;"><span style="font-size: 18px"><b>Trump (50.3% chance)</b></span></td>
             </tr>
             <tr>
-                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 270 (48.4%) MI WI PA</b></span></td>
-                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 270 (47.8%) MI WI PA</b></span></td>
+                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 276 (48.5%) MI WI PA NV</b></span></td>
+                <td style="color:Blue;"><span style="font-size: 18px"><b>Harris: 276 (48.1%) MI WI PA NV</b></span></td>
                 <td style="color:Blue;"><!--<span style="font-size: 18px"><b>-->Harris (49.5% chance)<!--</b></span>-->
                 </td>
             </tr>
@@ -137,10 +137,7 @@
                     error,
                     so even though my predictions about the swing states have always been based on who's leading in the
                     polls, they
-                    probably aren't very helpful. For one thing, I think it's far more likely that Harris will win the
-                    popular vote and Trump will win the electoral college, but for the past few days my algorithm has
-                    been
-                    predicting the other way around.</li>
+                    probably aren't very helpful.</li>
             </ul>
             Thanks for visiting this site and keeping up with it. I may return with a few more thoughts once the outcome
             of
@@ -260,7 +257,9 @@
                 \end{align}
             </div>
             where \(\alpha\) and \(\beta\) are hyperparameters between \(0\) and \(1\).</p>
-            <p>I ran a grid search to tune my hyperparameters, optimizing the MASE on the forecast over the
+            <p>I ran a standard grid search to tune my hyperparameters (\(\alpha\in(0.05,0.5)\),
+                \(\beta\in(0.05,0.3)\)),
+                optimizing the MASE on the forecast over the
                 test set relative to the MASE of the na&iuml;ve forecast on the training set over an
                 equivalent horizon. I used all my polling data minus the last week as training data, with five
                 cross-validation splits and

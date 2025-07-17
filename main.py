@@ -65,7 +65,8 @@ def main():
     if args.debug:
         logger.debug("Loading configuration objects...")
         logger.debug(
-            f"Model config: grid_min={model_config.grid_min}, grid_max={model_config.grid_max}"
+            f"Model config: alpha_grid_min={model_config.alpha_grid_min}, alpha_grid_max={model_config.alpha_grid_max}"
+            f"beta_grid_min={model_config.beta_grid_min}, beta_grid_max={model_config.beta_grid_max}"
         )
         logger.debug(
             f"Data config: candidates={data_config.candidates}, swing_states={data_config.swing_states}"

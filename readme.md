@@ -12,13 +12,13 @@ Election outcome predictions for each day from Oct 23 through Nov 5, 2024 using 
 
 Polling data  is filtered by polling date (starts at Jul 21 when Biden dropped out), likely voters, swing state and national polls, and FiveThirtyEight's feature POLLSCORE (`preprocess_data.py`).  Training data is the average polling percentage for each day with these filters applied.  
 
-__Project web page:__[https://wh33les.github.io/us-election-forecast-2024/](https://wh33les.github.io/us-election-forecast-2024/)
+__Project web page:__  [https://wh33les.github.io/us-election-forecast-2024/](https://wh33les.github.io/us-election-forecast-2024/)
 
 ## Technical Methodology
 
 ### Time Series Modeling
 - Holt (double) exponential smoothing with separate hyperparameters for each candidate.
-- Grid search optimization -- standard grid ($\alpha\in(0.05,0.5)$, $\beta\in(0.05,0.3)$ intervals of $0.05$), configurable in `src/config.py`.
+- Grid search optimization -- standard grid ($\alpha\in(0.05,0.5)$, $\beta\in(0.05,0.3)$, intervals of $0.05$), configurable in `src/config.py`.
 - Random walk with drift model for performance benchmarking.
 - Strict temporal validation ensuring no future information was used.
 

@@ -88,7 +88,7 @@ class ElectionPlotter:
         plt.xlabel("Date", fontsize=12)
         plt.ylabel("Percentage", fontsize=12)
         plt.xlim(datetime(2024, 7, 21), datetime(2024, 11, 5))
-        plt.ylim(40, 52)
+        plt.ylim(42, 52)
 
         # Title with forecast date
         title_date = forecast_date.strftime("%a %b %d %Y")
@@ -96,9 +96,6 @@ class ElectionPlotter:
         plt.legend()
 
         # Add parameter annotations
-        election_day_dt = datetime(2024, 11, 5)
-        trump_final = round(forecasts["trump"][-1], 1)
-
         param_text = (
             f"$\\alpha_{{Trump}} = {best_params['trump']['alpha']:.2f}$\n"
             f"$\\beta_{{Trump}} = {best_params['trump']['beta']:.2f}$\n"
@@ -106,12 +103,7 @@ class ElectionPlotter:
             f"$\\beta_{{Harris}} = {best_params['harris']['beta']:.2f}$"
         )
 
-        # Use type: ignore for matplotlib annotation since it handles datetime objects in practice
-        plt.annotate(
-            param_text,
-            xy=(election_day_dt, trump_final),  # type: ignore[arg-type]
-            xytext=(datetime(2024, 7, 23), 40.5),  # type: ignore[arg-type]
-        )
+        plt.text(datetime(2024, 7, 25), 42.5, param_text)  # type: ignore[arg-type]
 
         # Save plot
         save_path.unlink(missing_ok=True)
@@ -119,8 +111,6 @@ class ElectionPlotter:
             save_path,
             bbox_inches="tight",
             dpi=150,
-            facecolor="white",
-            edgecolor="none",
         )
         logger.info(f"Saved main forecast plot to {save_path}")
         plt.close()
@@ -142,7 +132,7 @@ class ElectionPlotter:
         trump_train_len = len(trump_train_data)
         harris_train_len = len(harris_train_data)
 
-        # 1. Holdout model predictions
+        # Create continuous prediction lines (holdout + future)
         trump_holdout_fitted = fitted_values["trump"][
             trump_train_len : trump_train_len + len(trump_holdout_data)
         ]
@@ -150,91 +140,66 @@ class ElectionPlotter:
             harris_train_len : harris_train_len + len(harris_holdout_data)
         ]
 
+        # Combine dates and values for continuous plotting
+        trump_prediction_dates = list(trump_holdout_data["end_date"]) + list(
+            forecast_period_dates
+        )
+        harris_prediction_dates = list(harris_holdout_data["end_date"]) + list(
+            forecast_period_dates
+        )
+        trump_prediction_values = list(trump_holdout_fitted) + list(forecasts["trump"])
+        harris_prediction_values = list(harris_holdout_fitted) + list(
+            forecasts["harris"]
+        )
+
+        # Plot continuous model predictions
         plt.plot(
-            trump_holdout_data["end_date"],
-            trump_holdout_fitted,
+            trump_prediction_dates,
+            trump_prediction_values,
             "r--",
             linewidth=2,
             alpha=0.7,
             label="Trump model predictions",
         )
         plt.plot(
-            harris_holdout_data["end_date"],
-            harris_holdout_fitted,
+            harris_prediction_dates,
+            harris_prediction_values,
             "b--",
             linewidth=2,
             alpha=0.7,
             label="Harris model predictions",
         )
 
-        # 2. Future model forecasts (with connection from last holdout prediction)
-        continuous_trump_dates = [trump_holdout_data["end_date"].iloc[-1]] + list(
+        # Create continuous baseline lines (holdout + future)
+        trump_baseline_dates = list(trump_holdout_data["end_date"]) + list(
             forecast_period_dates
         )
-        continuous_harris_dates = [harris_holdout_data["end_date"].iloc[-1]] + list(
+        harris_baseline_dates = list(harris_holdout_data["end_date"]) + list(
             forecast_period_dates
         )
-        continuous_trump_values = [fitted_values["trump"][-1]] + list(
-            forecasts["trump"]
+        trump_baseline_values = list(holdout_baselines["trump"]) + list(
+            baselines["trump"]
         )
-        continuous_harris_values = [fitted_values["harris"][-1]] + list(
-            forecasts["harris"]
-        )
-
-        plt.plot(
-            continuous_trump_dates,
-            continuous_trump_values,
-            "r--",
-            linewidth=2,
-            alpha=0.8,
-            label="Trump forecast",
-        )
-        plt.plot(
-            continuous_harris_dates,
-            continuous_harris_values,
-            "b--",
-            linewidth=2,
-            alpha=0.8,
-            label="Harris forecast",
+        harris_baseline_values = list(holdout_baselines["harris"]) + list(
+            baselines["harris"]
         )
 
-        # 3. Holdout baseline predictions
-        trump_baseline = holdout_baselines["trump"]
-        harris_baseline = holdout_baselines["harris"]
-
+        # Plot continuous baseline predictions
         plt.plot(
-            trump_holdout_data["end_date"],
-            trump_baseline,
+            trump_baseline_dates,
+            trump_baseline_values,
             "r:",
             linewidth=1.5,
-            alpha=0.8,
+            alpha=0.7,
             label="Trump baseline predictions",
         )
         plt.plot(
-            harris_holdout_data["end_date"],
-            harris_baseline,
+            harris_baseline_dates,
+            harris_baseline_values,
             "b:",
             linewidth=1.5,
-            alpha=0.8,
+            alpha=0.7,
             label="Harris baseline predictions",
-        )
-
-        # 4. Future baseline forecasts
-        plt.plot(
-            forecast_period_dates,
-            baselines["trump"],
-            "r:",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Trump baseline forecast",
-        )
-        plt.plot(
-            forecast_period_dates,
-            baselines["harris"],
-            "b:",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Harris baseline forecast",
         )
 
     def plot_historical_forecasts(
@@ -264,6 +229,7 @@ class ElectionPlotter:
             trump_data,
             color="red",
             label_prefix="Trump (model prediction)",
+            value_column="model",
             line_style="-",
             marker="o",
             markersize=4,
@@ -272,24 +238,27 @@ class ElectionPlotter:
             harris_data,
             color="blue",
             label_prefix="Harris (model prediction)",
+            value_column="model",
             line_style="-",
             marker="o",
             markersize=4,
         )
 
         # Plot baseline predictions with gap-aware line breaking
-        self._plot_baseline_segments(
+        self._plot_continuous_segments(
             trump_data,
             color="red",
             label_prefix="Trump (baseline)",
+            value_column="baseline",
             line_style="--",
             marker="s",
             markersize=3,
         )
-        self._plot_baseline_segments(
+        self._plot_continuous_segments(
             harris_data,
             color="blue",
             label_prefix="Harris (baseline)",
+            value_column="baseline",
             line_style="--",
             marker="s",
             markersize=3,
@@ -299,7 +268,7 @@ class ElectionPlotter:
         plt.xlabel("Date", fontsize=12)
         plt.ylabel("Percentage of popular vote", fontsize=12)
         plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
-        plt.ylim(45, 52)
+        plt.ylim(42, 52)
 
         # Set x-axis ticks
         tick_dates = [
@@ -310,7 +279,7 @@ class ElectionPlotter:
             datetime(2024, 10, 31),
             datetime(2024, 11, 2),
             datetime(2024, 11, 4),
-            datetime(2024, 11, 5),
+            # datetime(2024, 11, 5),
         ]
         plt.xticks(tick_dates)  # type: ignore[arg-type]
 
@@ -326,18 +295,26 @@ class ElectionPlotter:
             save_path,
             bbox_inches="tight",
             dpi=150,
-            facecolor="white",
-            edgecolor="none",
         )
         logger.info(f"Saved historical forecasts plot to {save_path}")
         plt.close()
 
     def _plot_continuous_segments(
-        self, data, color, label_prefix, line_style="-", marker="o", markersize=4
+        self,
+        data,
+        color,
+        label_prefix,
+        value_column,
+        line_style="-",
+        marker="o",
+        markersize=4,
     ):
         """Plot data in continuous segments, breaking lines at gaps."""
+        # Filter out NaN values for the specified column
+        plot_data = data[data[value_column].notna()]
+
         # Sort data by date
-        data_sorted = data.sort_values("date").copy()
+        data_sorted = plot_data.sort_values("date").copy()
         data_sorted["plot_date"] = pd.to_datetime(data_sorted["date"])
 
         # Find gaps in the date sequence (more than 1 day apart)
@@ -366,7 +343,7 @@ class ElectionPlotter:
                 # Single point - just plot marker
                 plt.plot(
                     segment["plot_date"],
-                    segment["model"],
+                    segment[value_column],
                     color=color,
                     marker=marker,
                     markersize=markersize,
@@ -377,59 +354,7 @@ class ElectionPlotter:
                 # Multiple points - plot line segment
                 plt.plot(
                     segment["plot_date"],
-                    segment["model"],
-                    color=color,
-                    linestyle=line_style,
-                    marker=marker,
-                    markersize=markersize,
-                    linewidth=2,
-                    label=segment_label,
-                )
-
-    def _plot_baseline_segments(
-        self, data, color, label_prefix, line_style="--", marker="s", markersize=3
-    ):
-        """Plot baseline data in continuous segments, breaking lines at gaps."""
-        baseline_data = data[data["baseline"].notna()]
-
-        # Sort data by date
-        data_sorted = baseline_data.sort_values("date").copy()
-        data_sorted["plot_date"] = pd.to_datetime(data_sorted["date"])
-
-        # Find gaps and split into segments (same logic as _plot_continuous_segments)
-        gaps = []
-        for i in range(1, len(data_sorted)):
-            current_date = data_sorted.iloc[i]["plot_date"]
-            previous_date = data_sorted.iloc[i - 1]["plot_date"]
-            days_diff = (current_date - previous_date).days
-            if days_diff > 1:
-                gaps.append(i)
-
-        segments = []
-        start_idx = 0
-        for gap_idx in gaps:
-            segments.append(data_sorted.iloc[start_idx:gap_idx])
-            start_idx = gap_idx
-        segments.append(data_sorted.iloc[start_idx:])
-
-        # Plot each segment separately
-        for i, segment in enumerate(segments):
-            segment_label = label_prefix if i == 0 else None
-
-            if len(segment) == 1:
-                plt.plot(
-                    segment["plot_date"],
-                    segment["baseline"],
-                    color=color,
-                    marker=marker,
-                    markersize=markersize,
-                    linestyle="None",
-                    label=segment_label,
-                )
-            else:
-                plt.plot(
-                    segment["plot_date"],
-                    segment["baseline"],
+                    segment[value_column],
                     color=color,
                     linestyle=line_style,
                     marker=marker,

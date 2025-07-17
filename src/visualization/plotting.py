@@ -44,39 +44,44 @@ class ElectionPlotter:
         """Create main forecast plot showing polling data and predictions."""
         logger.info("Creating main forecast plot...")
 
+        # Get candidate configuration from config and add data
+        candidates = {}
+        data_map = {
+            "trump": (trump_train_data, trump_holdout_data),
+            "harris": (harris_train_data, harris_holdout_data),
+        }
+
+        for key, config in self.config.candidate_config.items():
+            if key in data_map:
+                candidates[key] = {
+                    "name": config["display_name"],
+                    "color": config["color"],
+                    "train_data": data_map[key][0],
+                    "holdout_data": data_map[key][1],
+                }
+
         # Create figure
         plt.figure(figsize=(12, 6))
 
-        # Plot ALL polling data as continuous lines (combine training + holdout)
-        trump_all_data = pd.concat(
-            [trump_train_data, trump_holdout_data], ignore_index=True
-        ).sort_values("end_date")
-        harris_all_data = pd.concat(
-            [harris_train_data, harris_holdout_data], ignore_index=True
-        ).sort_values("end_date")
+        # Plot polling data for both candidates
+        for key, candidate in candidates.items():
+            # Combine training + holdout data for continuous line
+            all_data = pd.concat(
+                [candidate["train_data"], candidate["holdout_data"]], ignore_index=True
+            ).sort_values("end_date")
 
-        # Plot continuous observed polling data (thick solid lines)
-        plt.plot(
-            trump_all_data["end_date"],
-            trump_all_data["daily_average"],
-            "r",
-            linewidth=2,
-            label="Trump polling average",
-        )
-        plt.plot(
-            harris_all_data["end_date"],
-            harris_all_data["daily_average"],
-            "b",
-            linewidth=2,
-            label="Harris polling average",
-        )
+            # Plot continuous observed polling data (thick solid lines)
+            plt.plot(
+                all_data["end_date"],
+                all_data["daily_average"],
+                color=candidate["color"],
+                linewidth=2,
+                label=f"{candidate['name']} polling average",
+            )
 
-        # Plot all predictions (holdout + future) for both model and baseline
+        # Plot all predictions for both candidates
         self._plot_all_predictions(
-            trump_train_data,
-            trump_holdout_data,
-            harris_train_data,
-            harris_holdout_data,
+            candidates,
             fitted_values,
             forecast_period_dates,
             forecasts,
@@ -93,17 +98,37 @@ class ElectionPlotter:
         # Title with forecast date
         title_date = forecast_date.strftime("%a %b %d %Y")
         plt.title(f"Predictions for Election Day, as of {title_date}", fontsize=16)
-        plt.legend()
+        plt.legend(loc="lower right")
 
         # Add parameter annotations
         param_text = (
-            f"$\\alpha_{{Trump}} = {best_params['trump']['alpha']:.2f}$\n"
-            f"$\\beta_{{Trump}} = {best_params['trump']['beta']:.2f}$\n"
-            f"$\\alpha_{{Harris}} = {best_params['harris']['alpha']:.2f}$\n"
-            f"$\\beta_{{Harris}} = {best_params['harris']['beta']:.2f}$"
+            f"$\\mathbf{{Hyperparameters:}}$\n"
+            f"  $\\alpha_{{\\mathrm{{Trump}}}} = {best_params['trump']['alpha']:.2f}$\n"
+            f"  $\\beta_{{\\mathrm{{Trump}}}} = {best_params['trump']['beta']:.2f}$\n"
+            f"  $\\alpha_{{\\mathrm{{Harris}}}} = {best_params['harris']['alpha']:.2f}$\n"
+            f"  $\\beta_{{\\mathrm{{Harris}}}} = {best_params['harris']['beta']:.2f}$"
+        )
+        plt.text(
+            datetime(2024, 7, 25),  # type: ignore[arg-type]
+            42.3,
+            param_text,
+            fontsize=11,
         )
 
-        plt.text(datetime(2024, 7, 25), 42.5, param_text)  # type: ignore[arg-type]
+        # Add MASE performance annotations
+        mase_text = (
+            f"$\\mathbf{{MASE\\ Scores:}}$\n"
+            f"  Model - Trump: {best_params['trump']['mase']:.3f}\n"
+            f"  Model - Harris: {best_params['harris']['mase']:.3f}\n"
+            f"  Baseline - Trump: {best_params['trump']['baseline_mase']:.3f}\n"
+            f"  Baseline - Harris: {best_params['harris']['baseline_mase']:.3f}"
+        )
+        plt.text(
+            datetime(2024, 8, 17),  # type: ignore[arg-type]
+            42.3,
+            mase_text,
+            fontsize=11,
+        )
 
         # Save plot
         save_path.unlink(missing_ok=True)
@@ -117,90 +142,54 @@ class ElectionPlotter:
 
     def _plot_all_predictions(
         self,
-        trump_train_data,
-        trump_holdout_data,
-        harris_train_data,
-        harris_holdout_data,
+        candidates,
         fitted_values,
         forecast_period_dates,
         forecasts,
         baselines,
         holdout_baselines,
     ):
-        """Plot all model and baseline predictions for both holdout and future periods."""
+        """Plot all model and baseline predictions for both candidates."""
 
-        trump_train_len = len(trump_train_data)
-        harris_train_len = len(harris_train_data)
+        for key, candidate in candidates.items():
+            color = candidate["color"]
+            name = candidate["name"]
+            train_len = len(candidate["train_data"])
+            holdout_data = candidate["holdout_data"]
 
-        # Create continuous prediction lines (holdout + future)
-        trump_holdout_fitted = fitted_values["trump"][
-            trump_train_len : trump_train_len + len(trump_holdout_data)
-        ]
-        harris_holdout_fitted = fitted_values["harris"][
-            harris_train_len : harris_train_len + len(harris_holdout_data)
-        ]
+            # Create continuous prediction lines (holdout + future)
+            holdout_fitted = fitted_values[key][
+                train_len : train_len + len(holdout_data)
+            ]
 
-        # Combine dates and values for continuous plotting
-        trump_prediction_dates = list(trump_holdout_data["end_date"]) + list(
-            forecast_period_dates
-        )
-        harris_prediction_dates = list(harris_holdout_data["end_date"]) + list(
-            forecast_period_dates
-        )
-        trump_prediction_values = list(trump_holdout_fitted) + list(forecasts["trump"])
-        harris_prediction_values = list(harris_holdout_fitted) + list(
-            forecasts["harris"]
-        )
+            # Combine dates and values for continuous plotting
+            prediction_dates = list(holdout_data["end_date"]) + list(
+                forecast_period_dates
+            )
+            prediction_values = list(holdout_fitted) + list(forecasts[key])
+            baseline_values = list(holdout_baselines[key]) + list(baselines[key])
 
-        # Plot continuous model predictions
-        plt.plot(
-            trump_prediction_dates,
-            trump_prediction_values,
-            "r--",
-            linewidth=2,
-            alpha=0.7,
-            label="Trump model predictions",
-        )
-        plt.plot(
-            harris_prediction_dates,
-            harris_prediction_values,
-            "b--",
-            linewidth=2,
-            alpha=0.7,
-            label="Harris model predictions",
-        )
+            # Plot continuous model predictions
+            plt.plot(
+                prediction_dates,
+                prediction_values,
+                color=color,
+                linestyle="--",
+                linewidth=2,
+                alpha=0.7,
+                label=f"{name} model predictions",
+            )
 
-        # Create continuous baseline lines (holdout + future)
-        trump_baseline_dates = list(trump_holdout_data["end_date"]) + list(
-            forecast_period_dates
-        )
-        harris_baseline_dates = list(harris_holdout_data["end_date"]) + list(
-            forecast_period_dates
-        )
-        trump_baseline_values = list(holdout_baselines["trump"]) + list(
-            baselines["trump"]
-        )
-        harris_baseline_values = list(holdout_baselines["harris"]) + list(
-            baselines["harris"]
-        )
-
-        # Plot continuous baseline predictions
-        plt.plot(
-            trump_baseline_dates,
-            trump_baseline_values,
-            "r:",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Trump baseline predictions",
-        )
-        plt.plot(
-            harris_baseline_dates,
-            harris_baseline_values,
-            "b:",
-            linewidth=1.5,
-            alpha=0.7,
-            label="Harris baseline predictions",
-        )
+            # Plot continuous baseline predictions
+            plt.plot(
+                prediction_dates,
+                baseline_values,
+                color=color,
+                linestyle=":",
+                linewidth=1.5,
+                alpha=0.7,
+                label=f"{name} baseline predictions",
+            )
 
     def plot_historical_forecasts(
         self,
@@ -211,58 +200,42 @@ class ElectionPlotter:
         """Create historical forecasts plot showing how predictions changed over time."""
         logger.info("Creating historical forecasts plot...")
 
-        # Separate by candidate - only get data that actually exists (not NaN)
-        trump_data = previous_forecasts[
-            (previous_forecasts["candidate"] == "Donald Trump")
-            & (previous_forecasts["model"].notna())
-        ].copy()
-        harris_data = previous_forecasts[
-            (previous_forecasts["candidate"] == "Kamala Harris")
-            & (previous_forecasts["model"].notna())
-        ].copy()
-
         # Create figure
         plt.figure(figsize=(12, 6))
 
-        # Plot model predictions with gap-aware line breaking
-        self._plot_continuous_segments(
-            trump_data,
-            color="red",
-            label_prefix="Trump (model prediction)",
-            value_column="model",
-            line_style="-",
-            marker="o",
-            markersize=4,
-        )
-        self._plot_continuous_segments(
-            harris_data,
-            color="blue",
-            label_prefix="Harris (model prediction)",
-            value_column="model",
-            line_style="-",
-            marker="o",
-            markersize=4,
-        )
+        # Plot for each candidate using configuration
+        for key, config in self.config.candidate_config.items():
+            full_name = config["full_name"]
+            display_name = config["display_name"]
+            color = config["color"]
 
-        # Plot baseline predictions with gap-aware line breaking
-        self._plot_continuous_segments(
-            trump_data,
-            color="red",
-            label_prefix="Trump (baseline)",
-            value_column="baseline",
-            line_style="--",
-            marker="s",
-            markersize=3,
-        )
-        self._plot_continuous_segments(
-            harris_data,
-            color="blue",
-            label_prefix="Harris (baseline)",
-            value_column="baseline",
-            line_style="--",
-            marker="s",
-            markersize=3,
-        )
+            # Filter data for this candidate
+            candidate_data = previous_forecasts[
+                (previous_forecasts["candidate"] == full_name)
+                & (previous_forecasts["model"].notna())
+            ].copy()
+
+            # Plot model predictions
+            self._plot_continuous_segments(
+                candidate_data,
+                color=color,
+                label_prefix=f"{display_name} (model prediction)",
+                value_column="model",
+                line_style="-",
+                marker="o",
+                markersize=4,
+            )
+
+            # Plot baseline predictions
+            self._plot_continuous_segments(
+                candidate_data,
+                color=color,
+                label_prefix=f"{display_name} (baseline)",
+                value_column="baseline",
+                line_style="--",
+                marker="s",
+                markersize=3,
+            )
 
         # Formatting
         plt.xlabel("Date", fontsize=12)
@@ -286,7 +259,7 @@ class ElectionPlotter:
         # Title
         title_date = forecast_date.strftime("%a %b %d %Y")
         plt.title(f"Predictions up to {title_date}", fontsize=16)
-        plt.legend()
+        plt.legend(loc="lower right")
         plt.grid(True, alpha=0.3)
 
         # Save plot

@@ -51,6 +51,22 @@ class DataConfig:
     population_filter: str = "lv"  # likely voters
     pollscore_threshold: float = 0.0  # negative pollscore only
 
+    # Candidate visualization configuration
+    candidate_config: Dict[str, Dict] = field(
+        default_factory=lambda: {
+            "trump": {
+                "full_name": "Donald Trump",
+                "display_name": "Trump",
+                "color": "red",
+            },
+            "harris": {
+                "full_name": "Kamala Harris",
+                "display_name": "Harris",
+                "color": "blue",
+            },
+        }
+    )
+
     # Core date strings
     earliest_available_data: str = "2024-07-21"
     forecast_start_date: str = "2024-10-23"
@@ -108,3 +124,11 @@ class DataConfig:
             state_info["code"]: state_info["electoral_votes"]
             for state_info in self.swing_states.values()
         }
+
+    def get_candidate_keys(self) -> List[str]:
+        """Get list of candidate keys for iteration."""
+        return list(self.candidate_config.keys())
+
+    def get_candidate_full_names(self) -> List[str]:
+        """Get list of candidate full names."""
+        return [config["full_name"] for config in self.candidate_config.values()]

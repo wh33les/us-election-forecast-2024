@@ -8,17 +8,17 @@ __Final Results:__ Achieved forecasts within 2.5% of actual election results and
 
 ## Project Overview
 
-Election outcome predictions for each day from Oct 23 through Nov 5, 2024. Uses Holt (double) exponential smoothing with a random walk with drift baseline and 5-fold cross-validation that optimizes MASE.
+Election outcome predictions for each day from Oct 23 through Nov 5, 2024 using polling data from FiveThirtyEight (`data/raw_polling_data.csv`). Uses Holt (double) exponential smoothing with a random walk with drift baseline and 5-fold cross-validation that optimizes MASE.
 
-Polling data from FiveThirtyEight (`data/raw_polling_data.csv`) is filtered by polling date (starts at Jul 21 when Biden dropped out), likely voters, swing state and national polls, and FiveThirtyEight's feature POLLSCORE (`preprocess_data.py`).  Training data is the average polling percentage for each day.  
+Polling data  is filtered by polling date (starts at Jul 21 when Biden dropped out), likely voters, swing state and national polls, and FiveThirtyEight's feature POLLSCORE (`preprocess_data.py`).  Training data is the average polling percentage for each day with these filters applied.  
 
-[__Project web page:__](https://wh33les.github.io/us-election-forecast-2024/)
+__Project web page:__[https://wh33les.github.io/us-election-forecast-2024/](https://wh33les.github.io/us-election-forecast-2024/)
 
 ## Technical Methodology
 
 ### Time Series Modeling
-- Holt (double) exponential smoothing with separate /(/alpha)/ and /(/beta/) parameters for each candidate.
-- Grid search optimization -- standard grid, configurable in `src/config.py`.
+- Holt (double) exponential smoothing with separate hyperparameters for each candidate.
+- Grid search optimization -- standard grid ($\alpha\in(0.05,0.5)$, $\beta\in(0.05,0.3)$ intervals of $0.05$), configurable in `src/config.py`.
 - Random walk with drift model for performance benchmarking.
 - Strict temporal validation ensuring no future information was used.
 

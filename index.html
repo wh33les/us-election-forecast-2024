@@ -57,9 +57,10 @@
         <img src='web-page-files/ballot.jpg' class="ballot" width="100%">
         <p>This project forecasts, on each day leading up to the 2024 U.S. presidential
             election, who will win. Predictions are over the two weeks leading up to the election. Predictions are made
-            using <a href="data/president_polls.csv">this polling data
+            using <a href="data/raw_polling_data.csv">this polling data
                 from
-                FiveThirtyEight</a>, along with FiveThirtyEights's polling averages for swing states.
+                FiveThirtyEight</a> (no longer available on their site), along with FiveThirtyEights's polling averages
+            for swing states.
         </p>
         <p>My algorithm is a Holt exponential smoothing algorithm, and the baseline is random walk with drift.
         </p>
@@ -103,8 +104,14 @@
     <div>
         <p><span style="font-size: 18px"><u>Model</u></span></p>
         <img src='outputs/forecast_images/05Nov.png' width="100%">
-        <p>The solid lines indicate the daily polling averages. The prediction is given by the two dots at the very end
-            of the plot. See below for a description of the hyperparameters shown in the lower left-hand corner.</p>
+        <p>The solid lines indicate the daily polling averages, the dashed lines indicate the model's predictions of the
+            polling average trajectory with the final forecast on Nov 5, and the dotted lines are similarly the
+            baseline's predictions. The model and baseline training use the last 7 days of polling data for the test
+            data.</p>
+        <p>The MASE (mean absolute square error) scores compare the models' performance compared to the na&iuml;ve
+            forecast (the projection is just the last recorded data point). A score lower than 1 indicates the model
+            out-performed the na&iuml;ve forecast.</p>
+        <p>The hyperparameters are described below.</p>
     </div>
     <div>
         <h2><a href="#" onClick="toggleShowHide('reflections'); return false;">Reflections on Election Day</a></h2>
@@ -145,12 +152,12 @@
         <h2><a href="#" onClick="toggleShowHide('previous'); return false;">Previous forecasts</a></h2>
         <hr>
         <div id="previous" class="hidden">
-            <img src='outputs/final_historical.png' width="100%">
+            <img src='outputs/previous_forecasts/historical_1105.png' width="100%">
             <p>My prediction gives the percentage of the popular vote each candidate is going to win. FiveThirtyEight,
                 on
-                the other hand, calculated a likelihood of each candidate winning. Below, red indicates Trump is the
-                predicted winner and blue indicates Harris is the predicted winner. The percentages give the likelihood
-                that candidate will win, according to FiveThirtyEight's calculations.</p>
+                the other hand, calculated a likelihood of each candidate winning. Below are FiveThirtyEight's
+                predictions; red indicates Trump is the
+                predicted winner and blue indicates Harris is the predicted winner.</p>
             <table class="bordered-table">
                 <tr>
                     <th>10/23</th>
@@ -197,7 +204,7 @@
         <div id="swing" class="hidden">
             <p>As mentioned above, my method assumed each candidate would win their "safe" states, or the non-swing
                 states they were favored to win on that day. Information about likelihood of winning swing states was
-                gathered from FiveThirtyEight; unfortunately that data is no longer available.</p>
+                gathered from FiveThirtyEight; unfortunately that data is no longer available on their site.</p>
             <p>To predict who would win which swing states I calculated each candidate's predicted percentage of the
                 popular vote,
                 only among those two candidates. Then I allocated that percentage of electoral votes to each candidate.
@@ -253,20 +260,11 @@
                 \end{align}
             </div>
             where \(\alpha\) and \(\beta\) are hyperparameters between \(0\) and \(1\).</p>
-            <p>Originally I didn't think exponential smoothing would be an appropriate election forecast method, since
-                my intuition said new polls shouldn't really rely on polls that far in the past, and exponential
-                smoothing uses all previous observations to make predictions. On the other hand, I wanted the slope term
-                used in double exponential smoothing that takes trends into account. So I wanted to use a combination of
-                a weighted rolling average for the past 7 days, with the double exponential smoothing slope term.</p>
-            <p>Then, when trying to figure out how to modify the model, I realized that the weights already decrease
-                exponentially. If I make my hyperparameters, \( \alpha\) and \( \beta\) for each candidate, large
-                enough, then I can make sure the model only takes the past week or so's observations into account, while
-                the rest give negligible contributions. This seemed much simpler.</p>
-            <p>I ran a grid search to tune my hyperparameters, optimizing the mean absolute error of the forecast on the
-                test set relative to the mean absolute error of the na&iuml;ve forecast on the training set over an
-                equivalent horizon. I used all my polling data as training data, with five cross-validation splits and
-                holdout sets of 7 days each. I did it this way because I thought all the data would be useful in
-                building the model, it didn't make sense to leave out the last few days as test data. Surprisingly,
+            <p>I ran a grid search to tune my hyperparameters, optimizing the MASE on the forecast over the
+                test set relative to the MASE of the na&iuml;ve forecast on the training set over an
+                equivalent horizon. I used all my polling data minus the last week as training data, with five
+                cross-validation splits and
+                holdout sets of 7 days each. Surprisingly,
                 after running the grid search the hyperparameters all turned out to be small, meaning the better
                 forecasts come from taking all previous data into account!</p>
         </div>

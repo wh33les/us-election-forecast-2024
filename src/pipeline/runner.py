@@ -442,7 +442,7 @@ class ForecastRunner:
                 best_params=forecast_results["best_params"],
                 forecast_period_dates=forecast_results["plotting_days_till_then"],
                 forecast_date=forecast_date,
-                training_end_date=forecast_results["train_cutoff_date"],
+                _training_end_date=forecast_results["train_cutoff_date"],
                 holdout_baselines=forecast_results["plotting_holdout_baselines"],
                 save_path=forecast_plot_path,
             )

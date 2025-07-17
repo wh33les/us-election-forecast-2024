@@ -3,8 +3,118 @@
 
 from datetime import datetime, date
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import numpy as np
+
+
+@dataclass
+class PlotConfig:
+    """Configuration for all plotting and visualization settings."""
+
+    # Figure settings
+    figure_size: Tuple[int, int] = (12, 6)
+    dpi: int = 150
+
+    # Plot limits and ranges
+    date_range_start: str = "2024-07-21"
+    date_range_end: str = "2024-11-05"
+    y_axis_min: float = 42.0
+    y_axis_max: float = 52.0
+
+    # Historical plot settings
+    historical_date_range_start: str = "2024-10-23"
+    historical_date_range_end: str = "2024-11-05"
+
+    # Font settings
+    title_font_size: int = 16
+    axis_label_font_size: int = 12
+    annotation_font_size: int = 11
+
+    # Line and marker settings
+    polling_line_width: float = 2.0
+    prediction_line_width: float = 2.0
+    baseline_line_width: float = 1.5
+
+    # Alpha (transparency) settings
+    prediction_alpha: float = 0.7
+    baseline_alpha: float = 0.7
+    grid_alpha: float = 0.3
+
+    # Marker settings
+    model_marker: str = "o"
+    baseline_marker: str = "s"
+    model_marker_size: int = 4
+    baseline_marker_size: int = 3
+
+    # Line styles
+    polling_line_style: str = "-"
+    model_line_style: str = "--"
+    baseline_line_style: str = ":"
+    historical_model_line_style: str = "-"
+    historical_baseline_line_style: str = "--"
+
+    # Annotation positions (as tuples of (x, y) coordinates)
+    hyperparameter_annotation_pos: Tuple[str, float] = ("2024-07-25", 42.3)
+    mase_annotation_pos: Tuple[str, float] = ("2024-08-17", 42.3)
+
+    # Legend settings
+    legend_location: str = "lower right"
+
+    # Tick formatting
+    date_format_style: str = (
+        "short_month"  # Options: "numeric" (10-7), "short_month" (Oct 7), "full_month" (October 7)
+    )
+    rotate_tick_labels: bool = False  # Rotate labels for better readability
+    tick_label_rotation: int = 45  # Rotation angle
+    tick_label_ha: str = "right"  # Horizontal alignment
+
+    # Forecast plot tick intervals (longer time range, fewer ticks)
+    forecast_major_tick_interval: int = 14  # Show major ticks every 14 days
+
+    # Historical plot tick intervals (shorter time range, more ticks)
+    historical_major_tick_interval: int = 2  # Show major ticks every 2 days
+
+    # Historical plot tick dates
+    historical_tick_dates: List[str] = field(
+        default_factory=lambda: [
+            "2024-10-23",
+            "2024-10-25",
+            "2024-10-27",
+            "2024-10-29",
+            "2024-10-31",
+            "2024-11-02",
+            "2024-11-04",
+        ]
+    )
+
+    def __post_init__(self):
+        """Parse date strings into datetime objects for plotting."""
+        self.date_range_start_parsed = datetime.strptime(
+            self.date_range_start, "%Y-%m-%d"
+        )
+        self.date_range_end_parsed = datetime.strptime(self.date_range_end, "%Y-%m-%d")
+        self.historical_date_range_start_parsed = datetime.strptime(
+            self.historical_date_range_start, "%Y-%m-%d"
+        )
+        self.historical_date_range_end_parsed = datetime.strptime(
+            self.historical_date_range_end, "%Y-%m-%d"
+        )
+
+        # Parse annotation positions
+        self.hyperparameter_annotation_pos_parsed = (
+            datetime.strptime(self.hyperparameter_annotation_pos[0], "%Y-%m-%d"),
+            self.hyperparameter_annotation_pos[1],
+        )
+        self.mase_annotation_pos_parsed = (
+            datetime.strptime(self.mase_annotation_pos[0], "%Y-%m-%d"),
+            self.mase_annotation_pos[1],
+        )
+
+        # Parse historical tick dates
+        self.historical_tick_dates_parsed = [
+            datetime.strptime(date_str, "%Y-%m-%d")
+            for date_str in self.historical_tick_dates
+        ]
 
 
 @dataclass
@@ -72,8 +182,10 @@ class DataConfig:
     forecast_start_date: str = "2024-10-23"
     election_day: str = "2024-11-05"
 
+    # Plot configuration
+    plot_config: PlotConfig = field(default_factory=PlotConfig)
+
     # Explicitly declare parsed date attributes for type checking
-    # These are set in __post_init__ and should never be None
     earliest_available_data_parsed: date = field(init=False)
     forecast_start_date_parsed: date = field(init=False)
     election_day_parsed: date = field(init=False)

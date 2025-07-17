@@ -4,10 +4,12 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 import seaborn as sns
 import logging
 from datetime import datetime, date
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,7 @@ class ElectionPlotter:
     def __init__(self, config):
         """Initialize with configuration."""
         self.config = config
+        self.plot_config = config.plot_config
 
         # Set plotting style
         sns.set_style("whitegrid")
@@ -37,12 +40,15 @@ class ElectionPlotter:
         best_params: Dict[str, Dict[str, float]],
         forecast_period_dates: pd.Series,
         forecast_date: Union[datetime, date],
-        training_end_date: Union[datetime, date],
+        _training_end_date: Union[datetime, date],
         holdout_baselines: Dict[str, np.ndarray],
         save_path: Path,
     ):
         """Create main forecast plot showing polling data and predictions."""
         logger.info("Creating main forecast plot...")
+
+        # Format date once at the top
+        title_date = forecast_date.strftime("%a %b %d %Y")
 
         # Get candidate configuration from config and add data
         candidates = {}
@@ -60,8 +66,8 @@ class ElectionPlotter:
                     "holdout_data": data_map[key][1],
                 }
 
-        # Create figure
-        plt.figure(figsize=(12, 6))
+        # Create figure with configured size
+        plt.figure(figsize=self.plot_config.figure_size)
 
         # Plot polling data for both candidates
         for key, candidate in candidates.items():
@@ -70,12 +76,13 @@ class ElectionPlotter:
                 [candidate["train_data"], candidate["holdout_data"]], ignore_index=True
             ).sort_values("end_date")
 
-            # Plot continuous observed polling data (thick solid lines)
+            # Plot continuous observed polling data using configured settings
             plt.plot(
                 all_data["end_date"],
                 all_data["daily_average"],
                 color=candidate["color"],
-                linewidth=2,
+                linewidth=self.plot_config.polling_line_width,
+                linestyle=self.plot_config.polling_line_style,
                 label=f"{candidate['name']} polling average",
             )
 
@@ -89,53 +96,35 @@ class ElectionPlotter:
             holdout_baselines,
         )
 
-        # Formatting
-        plt.xlabel("Date", fontsize=12)
-        plt.ylabel("Percentage", fontsize=12)
-        plt.xlim(datetime(2024, 7, 21), datetime(2024, 11, 5))
-        plt.ylim(42, 52)
-
-        # Title with forecast date
-        title_date = forecast_date.strftime("%a %b %d %Y")
-        plt.title(f"Predictions for Election Day, as of {title_date}", fontsize=16)
-        plt.legend(loc="lower right")
-
-        # Add parameter annotations
-        param_text = (
-            f"$\\mathbf{{Hyperparameters:}}$\n"
-            f"  $\\alpha_{{\\mathrm{{Trump}}}} = {best_params['trump']['alpha']:.2f}$\n"
-            f"  $\\beta_{{\\mathrm{{Trump}}}} = {best_params['trump']['beta']:.2f}$\n"
-            f"  $\\alpha_{{\\mathrm{{Harris}}}} = {best_params['harris']['alpha']:.2f}$\n"
-            f"  $\\beta_{{\\mathrm{{Harris}}}} = {best_params['harris']['beta']:.2f}$"
+        # Formatting using configured values
+        plt.xlabel("Date", fontsize=self.plot_config.axis_label_font_size)
+        plt.ylabel("Percentage", fontsize=self.plot_config.axis_label_font_size)
+        plt.xlim(
+            self.plot_config.date_range_start_parsed,
+            self.plot_config.date_range_end_parsed,
         )
-        plt.text(
-            datetime(2024, 7, 25),  # type: ignore[arg-type]
-            42.3,
-            param_text,
-            fontsize=11,
+        plt.ylim(self.plot_config.y_axis_min, self.plot_config.y_axis_max)
+        plt.title(
+            f"Predictions for Election Day, as of {title_date}",
+            fontsize=self.plot_config.title_font_size,
+        )
+        plt.legend(loc=self.plot_config.legend_location)
+
+        # Add parameter annotations using configured positions
+        self._add_parameter_annotations(best_params)
+        self._add_mase_annotations(best_params)
+
+        # Format x-axis ticks for forecast plot
+        self._format_date_ticks(
+            major_interval=self.plot_config.forecast_major_tick_interval
         )
 
-        # Add MASE performance annotations
-        mase_text = (
-            f"$\\mathbf{{MASE\\ Scores:}}$\n"
-            f"  Model - Trump: {best_params['trump']['mase']:.3f}\n"
-            f"  Model - Harris: {best_params['harris']['mase']:.3f}\n"
-            f"  Baseline - Trump: {best_params['trump']['baseline_mase']:.3f}\n"
-            f"  Baseline - Harris: {best_params['harris']['baseline_mase']:.3f}"
-        )
-        plt.text(
-            datetime(2024, 8, 17),  # type: ignore[arg-type]
-            42.3,
-            mase_text,
-            fontsize=11,
-        )
-
-        # Save plot
+        # Save plot with configured DPI
         save_path.unlink(missing_ok=True)
         plt.savefig(
             save_path,
             bbox_inches="tight",
-            dpi=150,
+            dpi=self.plot_config.dpi,
         )
         logger.info(f"Saved main forecast plot to {save_path}")
         plt.close()
@@ -169,27 +158,59 @@ class ElectionPlotter:
             prediction_values = list(holdout_fitted) + list(forecasts[key])
             baseline_values = list(holdout_baselines[key]) + list(baselines[key])
 
-            # Plot continuous model predictions
+            # Plot continuous model predictions using configured settings
             plt.plot(
                 prediction_dates,
                 prediction_values,
                 color=color,
-                linestyle="--",
-                linewidth=2,
-                alpha=0.7,
+                linestyle=self.plot_config.model_line_style,
+                linewidth=self.plot_config.prediction_line_width,
+                alpha=self.plot_config.prediction_alpha,
                 label=f"{name} model predictions",
             )
 
-            # Plot continuous baseline predictions
+            # Plot continuous baseline predictions using configured settings
             plt.plot(
                 prediction_dates,
                 baseline_values,
                 color=color,
-                linestyle=":",
-                linewidth=1.5,
-                alpha=0.7,
+                linestyle=self.plot_config.baseline_line_style,
+                linewidth=self.plot_config.baseline_line_width,
+                alpha=self.plot_config.baseline_alpha,
                 label=f"{name} baseline predictions",
             )
+
+    def _add_parameter_annotations(self, best_params):
+        """Add hyperparameter annotations using configured position."""
+        param_text = (
+            f"$\\mathbf{{Hyperparameters:}}$\n"
+            f"  $\\alpha_{{\\mathrm{{Trump}}}} = {best_params['trump']['alpha']:.2f}$\n"
+            f"  $\\beta_{{\\mathrm{{Trump}}}} = {best_params['trump']['beta']:.2f}$\n"
+            f"  $\\alpha_{{\\mathrm{{Harris}}}} = {best_params['harris']['alpha']:.2f}$\n"
+            f"  $\\beta_{{\\mathrm{{Harris}}}} = {best_params['harris']['beta']:.2f}$"
+        )
+        plt.text(
+            self.plot_config.hyperparameter_annotation_pos_parsed[0],
+            self.plot_config.hyperparameter_annotation_pos_parsed[1],
+            param_text,
+            fontsize=self.plot_config.annotation_font_size,
+        )
+
+    def _add_mase_annotations(self, best_params):
+        """Add MASE performance annotations using configured position."""
+        mase_text = (
+            f"$\\mathbf{{MASE\\ Scores:}}$\n"
+            f"  Model - Trump: {best_params['trump']['mase']:.3f}\n"
+            f"  Model - Harris: {best_params['harris']['mase']:.3f}\n"
+            f"  Baseline - Trump: {best_params['trump']['baseline_mase']:.3f}\n"
+            f"  Baseline - Harris: {best_params['harris']['baseline_mase']:.3f}"
+        )
+        plt.text(
+            self.plot_config.mase_annotation_pos_parsed[0],
+            self.plot_config.mase_annotation_pos_parsed[1],
+            mase_text,
+            fontsize=self.plot_config.annotation_font_size,
+        )
 
     def plot_historical_forecasts(
         self,
@@ -200,8 +221,11 @@ class ElectionPlotter:
         """Create historical forecasts plot showing how predictions changed over time."""
         logger.info("Creating historical forecasts plot...")
 
-        # Create figure
-        plt.figure(figsize=(12, 6))
+        # Format date once at the top
+        title_date = forecast_date.strftime("%a %b %d %Y")
+
+        # Create figure with configured size
+        plt.figure(figsize=self.plot_config.figure_size)
 
         # Plot for each candidate using configuration
         for key, config in self.config.candidate_config.items():
@@ -221,9 +245,9 @@ class ElectionPlotter:
                 color=color,
                 label_prefix=f"{display_name} (model prediction)",
                 value_column="model",
-                line_style="-",
-                marker="o",
-                markersize=4,
+                line_style=self.plot_config.historical_model_line_style,
+                marker=self.plot_config.model_marker,
+                markersize=self.plot_config.model_marker_size,
             )
 
             # Plot baseline predictions
@@ -232,42 +256,38 @@ class ElectionPlotter:
                 color=color,
                 label_prefix=f"{display_name} (baseline)",
                 value_column="baseline",
-                line_style="--",
-                marker="s",
-                markersize=3,
+                line_style=self.plot_config.historical_baseline_line_style,
+                marker=self.plot_config.baseline_marker,
+                markersize=self.plot_config.baseline_marker_size,
             )
 
-        # Formatting
-        plt.xlabel("Date", fontsize=12)
-        plt.ylabel("Percentage of popular vote", fontsize=12)
-        plt.xlim(datetime(2024, 10, 23), datetime(2024, 11, 5))
-        plt.ylim(42, 52)
+        # Formatting using configured values
+        plt.xlabel("Date", fontsize=self.plot_config.axis_label_font_size)
+        plt.ylabel(
+            "Percentage of popular vote", fontsize=self.plot_config.axis_label_font_size
+        )
+        plt.xlim(
+            self.plot_config.historical_date_range_start_parsed,
+            self.plot_config.historical_date_range_end_parsed,
+        )
+        plt.ylim(self.plot_config.y_axis_min, self.plot_config.y_axis_max)
+        plt.title(
+            f"Predictions up to {title_date}", fontsize=self.plot_config.title_font_size
+        )
+        plt.legend(loc=self.plot_config.legend_location)
+        plt.grid(True, alpha=self.plot_config.grid_alpha)
 
-        # Set x-axis ticks
-        tick_dates = [
-            datetime(2024, 10, 23),
-            datetime(2024, 10, 25),
-            datetime(2024, 10, 27),
-            datetime(2024, 10, 29),
-            datetime(2024, 10, 31),
-            datetime(2024, 11, 2),
-            datetime(2024, 11, 4),
-            # datetime(2024, 11, 5),
-        ]
-        plt.xticks(tick_dates)  # type: ignore[arg-type]
+        # Format x-axis ticks for historical plot
+        self._format_date_ticks(
+            major_interval=self.plot_config.historical_major_tick_interval
+        )
 
-        # Title
-        title_date = forecast_date.strftime("%a %b %d %Y")
-        plt.title(f"Predictions up to {title_date}", fontsize=16)
-        plt.legend(loc="lower right")
-        plt.grid(True, alpha=0.3)
-
-        # Save plot
+        # Save plot with configured DPI
         save_path.unlink(missing_ok=True)
         plt.savefig(
             save_path,
             bbox_inches="tight",
-            dpi=150,
+            dpi=self.plot_config.dpi,
         )
         logger.info(f"Saved historical forecasts plot to {save_path}")
         plt.close()
@@ -332,6 +352,45 @@ class ElectionPlotter:
                     linestyle=line_style,
                     marker=marker,
                     markersize=markersize,
-                    linewidth=2,
+                    linewidth=self.plot_config.prediction_line_width,
                     label=segment_label,
                 )
+
+    def _format_date_ticks(self, major_interval=None):
+        """Format x-axis date ticks using configured format and specified intervals."""
+        ax = plt.gca()
+
+        # Set tick intervals (use parameters if provided, otherwise use defaults)
+        major_int = major_interval if major_interval is not None else 7
+
+        # Set tick locators
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=major_int))
+
+        # Create custom formatter based on configured style
+        def custom_date_formatter(x, _pos):
+            """Custom formatter for different date styles without leading zeros."""
+            date_obj = mdates.num2date(x)
+
+            if self.plot_config.date_format_style == "numeric":
+                # Format: 10-7
+                return f"{date_obj.month}-{date_obj.day}"
+            elif self.plot_config.date_format_style == "short_month":
+                # Format: Oct 7
+                return f"{date_obj.strftime('%b')} {date_obj.day}"
+            elif self.plot_config.date_format_style == "full_month":
+                # Format: October 7
+                return f"{date_obj.strftime('%B')} {date_obj.day}"
+            else:
+                # Default to numeric
+                return f"{date_obj.month}-{date_obj.day}"
+
+        # Set major tick formatter
+        ax.xaxis.set_major_formatter(ticker.FuncFormatter(custom_date_formatter))
+
+        # Rotate labels if configured
+        if self.plot_config.rotate_tick_labels:
+            plt.setp(
+                ax.xaxis.get_majorticklabels(),
+                rotation=self.plot_config.tick_label_rotation,
+                ha=self.plot_config.tick_label_ha,
+            )
